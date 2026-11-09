@@ -148,6 +148,62 @@ test.describe('desktop', () => {
     await expect(world).toHaveAttribute('data-lod', 'far')
   })
 
+  test('does not flicker while the pointer crosses the diagram', async ({ page }) => {
+    await table(page, 'orders').click()
+    await expect(page.getByRole('complementary', { name: 'Details of table orders' })).toBeVisible()
+    await page.waitForTimeout(500)
+
+    // Count every change of a highlight while the pointer sweeps over other tables.
+    await page.evaluate(() => {
+      const state = window as unknown as { highlightChanges: number }
+      state.highlightChanges = 0
+      new MutationObserver((records) => {
+        state.highlightChanges += records.length
+      }).observe(document.querySelector('.canvas-world')!, {
+        attributes: true,
+        attributeFilter: ['data-active'],
+        subtree: true,
+      })
+    })
+    const from = (await table(page, 'countries').boundingBox())!
+    const to = (await table(page, 'categories').boundingBox())!
+    await page.mouse.move(from.x + 20, from.y + 20)
+    await page.mouse.move(to.x + 20, to.y + 20, { steps: 25 })
+    const changes = await page.evaluate(
+      () => (window as unknown as { highlightChanges: number }).highlightChanges,
+    )
+    expect(changes).toBe(0)
+
+    // With a table selected, resting on another one changes nothing either; the next
+    // click decides. Without a selection, resting on a table lights its relations.
+    await page.waitForTimeout(300)
+    await expect(page.locator('.edge[data-active="true"]')).toHaveCount(6)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.edge[data-active="true"]')).not.toHaveCount(0)
+  })
+
+  test('selecting tables does not spawn GPU layers', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'The layer tree is a Chrome DevTools feature')
+    // An opacity animation gives an element its own GPU layer, and everything above it
+    // follows. A click once doubled the layers for a moment and Chrome showed a frame
+    // without content.
+    const cdp = await page.context().newCDPSession(page)
+    let latest = 0
+    let largest = 0
+    cdp.on('LayerTree.layerTreeDidChange', (event) => {
+      latest = event.layers?.length ?? 0
+      largest = Math.max(largest, latest)
+    })
+    await cdp.send('LayerTree.enable')
+    for (const name of ['orders', 'customers', 'countries']) {
+      await table(page, name).click()
+      await page.waitForTimeout(400)
+    }
+    await page.waitForTimeout(400)
+    // While a selection changes, the layer count stays where it settles afterwards.
+    expect(largest - latest).toBeLessThanOrEqual(3)
+  })
+
   test('reduces tables to their keys', async ({ page }) => {
     await page.getByRole('radio', { name: 'Keys' }).click()
     await expect(table(page, 'customers')).toContainText('4 more columns')
@@ -247,12 +303,12 @@ test.describe('desktop', () => {
     const shadow = () => item.evaluate((element) => getComputedStyle(element).boxShadow)
 
     await item.hover()
-    await expect(item).toHaveAttribute('data-highlighted', '')
+    await expect(item).toHaveAttribute('data-highlighted')
     expect(await shadow()).toBe('none')
 
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowUp')
-    await expect(item).toHaveAttribute('data-highlighted', '')
+    await expect(item).toHaveAttribute('data-highlighted')
     // The highlight moves on the next frame; poll instead of reading once.
     await expect.poll(shadow).toContain('inset')
   })
