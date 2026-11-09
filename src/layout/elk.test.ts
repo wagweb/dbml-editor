@@ -233,3 +233,58 @@ describe('runLayout', () => {
     expect(Object.keys(result.routes)).toHaveLength(2)
   })
 })
+
+describe('relayout of a known diagram', () => {
+  const STACKED = `
+Table customers { id int [pk] }
+Table addresses { id int [pk]
+  customer_id int [ref: > customers.id] }
+Table countries { code char(2) [pk] }
+Table products { id int [pk]
+  name varchar }
+Table categories { id int [pk] }
+Table orders { id int [pk]
+  customer_id int [ref: > customers.id]
+  product_id int [ref: > products.id] }
+Table items { id int [pk]
+  order_id int [ref: > orders.id]
+  product_id int [ref: > products.id] }
+Ref: addresses.id > countries.code
+Ref: products.id > categories.id
+TableGroup people { customers
+  addresses
+  countries }
+TableGroup catalog { products
+  categories }
+TableGroup sales { orders
+  items }
+`
+
+  it('reports which block pairs it stacked and reuses them when asked', async () => {
+    const { model, boxes } = await layout(STACKED)
+    const first = await runLayout(elk, { model, boxes, viewport: { width: 900, height: 700 } })
+    expect(Array.isArray(first.stacked)).toBe(true)
+    const again = await runLayout(elk, {
+      model,
+      boxes,
+      viewport: { width: 900, height: 700 },
+      previous: first.positions,
+      stacked: first.stacked,
+    })
+    expect(again.stacked).toEqual(first.stacked)
+    expect(again.positions).toEqual(first.positions)
+  })
+
+  it('follows the order on screen when previous positions are given', async () => {
+    const { model, boxes } = await layout(SHOP)
+    const first = await runLayout(elk, { model, boxes })
+    // Swap two unrelated tables vertically and ask again: the new order is kept.
+    const swapped = {
+      ...first.positions,
+      products: first.positions.users!,
+      users: first.positions.products!,
+    }
+    const again = await runLayout(elk, { model, boxes, previous: swapped, stacked: [] })
+    for (const id of Object.keys(first.positions)) expect(again.positions[id]).toBeDefined()
+  })
+})

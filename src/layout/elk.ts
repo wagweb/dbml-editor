@@ -14,6 +14,17 @@ export interface LayoutRequest {
   boxes: ReadonlyMap<string, TableBox>
   /** Screen area the diagram should fill; decides how much the layout may wrap. */
   viewport?: Size
+  /**
+   * Where the tables sat before this change. The engine then follows their order on screen
+   * instead of the order of the source, so a small edit moves little and the diagram stays
+   * recognisable.
+   */
+  previous?: Readonly<Record<string, Point>>
+  /**
+   * Block pairs that were stacked last time. Reused as they are, so the groups do not
+   * swap places when only the size of the cards changes.
+   */
+  stacked?: readonly string[]
 }
 
 export type Side = 'E' | 'W'
@@ -31,6 +42,8 @@ export interface StoredRoute {
 export interface LayoutResult {
   positions: Record<string, Point>
   routes: Record<string, StoredRoute>
+  /** Block pairs drawn as brackets (stacked instead of side by side). */
+  stacked?: string[]
 }
 
 /** Space a group reserves around its tables, matching what the canvas draws. */
@@ -131,22 +144,32 @@ export async function runLayout(
 
   const layout = async (planned: PlannedEdge[]) =>
     readResult(await elk.layout(buildGraph(request, planned, overrides)), request, planned)
+  const stack = (pairs: ReadonlySet<string>) =>
+    edges.map((edge) =>
+      pairs.has(pairKey(blockOf(edge.leftTableId), blockOf(edge.rightTableId)))
+        ? { ...edge, shape: 'bracket' as const }
+        : edge,
+    )
+  const blockPairs = new Set(
+    edges.map((edge) => pairKey(blockOf(edge.leftTableId), blockOf(edge.rightTableId))),
+  )
+
+  // A relayout of a known diagram keeps the earlier decision while all its pairs still exist.
+  const kept = request.stacked
+  if (request.previous && kept && kept.every((pair) => blockPairs.has(pair))) {
+    const pairs = new Set(kept)
+    return { ...(await layout(stack(pairs))), stacked: [...pairs] }
+  }
 
   const plain = await layout(edges)
   const relaxed = relaxedBlockPairs(request, edges, blockOf)
-  if (relaxed.size === 0) return plain
+  if (relaxed.size === 0) return { ...plain, stacked: [] }
 
   // The choice above rests on an estimate, so the wrapped variant has to prove itself.
-  const wrapped = await layout(
-    edges.map((edge) =>
-      relaxed.has(pairKey(blockOf(edge.leftTableId), blockOf(edge.rightTableId)))
-        ? { ...edge, shape: 'bracket' as const }
-        : edge,
-    ),
-  )
+  const wrapped = await layout(stack(relaxed))
   const viewport = request.viewport ?? DEFAULT_VIEWPORT
   const gain = fitScale(wrapped, boxes, viewport) / fitScale(plain, boxes, viewport)
-  return gain >= MIN_WRAP_GAIN ? wrapped : plain
+  return gain >= MIN_WRAP_GAIN ? { ...wrapped, stacked: [...relaxed] } : { ...plain, stacked: [] }
 }
 
 /** Zoom at which the laid out tables fit the viewport, never above 100%. */
@@ -235,7 +258,11 @@ function buildGraph(
   edges: PlannedEdge[],
   overrides: LayoutOptions,
 ): ElkNode {
-  const { model, boxes } = request
+  const { model, boxes, previous } = request
+  // The engine follows model order wherever it costs nothing. Without previous positions
+  // that is the order of the source; with them it is the order on screen, top to bottom,
+  // so a relayout after a small change keeps tables and groups where the eye left them.
+  const tables = previous ? sortBySeat(model.tables, previous) : model.tables
 
   const ports = new Map<string, Map<string, ElkPort>>()
   const addPort = (tableId: string, offsetY: number, side: Side) => {
@@ -273,7 +300,13 @@ function buildGraph(
   const grouped = new Set<string>()
   const groupNodes = new Map<string, ElkNode>()
   for (const group of model.groups) {
-    const children = group.tableIds
+    const memberIds = previous
+      ? sortBySeat(
+          group.tableIds.map((id) => ({ id })),
+          previous,
+        ).map((t) => t.id)
+      : group.tableIds
+    const children = memberIds
       .filter((id) => !grouped.has(id))
       .map((id) => {
         grouped.add(id)
@@ -289,10 +322,10 @@ function buildGraph(
     }
   }
 
-  // Keep source order at the top level: a group takes the slot of its first table.
+  // Keep model order at the top level: a group takes the slot of its first table.
   const children: ElkNode[] = []
   const emittedGroups = new Set<string>()
-  for (const table of model.tables) {
+  for (const table of tables) {
     if (!grouped.has(table.id)) {
       const node = tableNode(table.id)
       if (node) children.push(node)
@@ -350,6 +383,21 @@ function buildGraph(
     children,
     edges: elkEdges,
   }
+}
+
+/** Top to bottom, then left to right; tables without a seat keep their relative order last. */
+function sortBySeat<T extends { id: string }>(
+  items: readonly T[],
+  previous: Readonly<Record<string, Point>>,
+): T[] {
+  const at = (item: T) => (Object.hasOwn(previous, item.id) ? previous[item.id] : undefined)
+  return items
+    .map((item, index) => ({ item, index, point: at(item) }))
+    .sort((a, b) => {
+      if (!a.point || !b.point) return Number(!a.point) - Number(!b.point) || a.index - b.index
+      return a.point.y - b.point.y || a.point.x - b.point.x || a.index - b.index
+    })
+    .map((entry) => entry.item)
 }
 
 function readResult(graph: ElkNode, request: LayoutRequest, edges: PlannedEdge[]): LayoutResult {
