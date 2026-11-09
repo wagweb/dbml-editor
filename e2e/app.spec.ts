@@ -131,13 +131,19 @@ test.describe('desktop', () => {
 
   test('keeps the zoom when a table is clicked far out', async ({ page }) => {
     const world = page.locator('.canvas-world')
+    const toolbar = page.getByRole('group', { name: 'Diagram view' })
     const scale = () =>
       world.evaluate((element) => /scale\(([\d.]+)\)/.exec(element.style.transform)?.[1])
+    const near = (await toolbar.boundingBox())!.width
     for (let step = 0; step < 3; step += 1) {
       await page.getByRole('button', { name: 'Zoom out' }).click()
       await page.waitForTimeout(400)
     }
     await expect(world).toHaveAttribute('data-lod', 'far')
+    // "Show columns" takes the place of the detail switch without changing the width.
+    await expect(page.getByRole('button', { name: 'Show columns' })).toBeVisible()
+    await expect(page.getByRole('radio', { name: 'Keys' })).toBeHidden()
+    expect((await toolbar.boundingBox())!.width).toBe(near)
     const before = await scale()
 
     // Zooming in on a click switched every card to rows mid-move, which read as a flicker.
@@ -208,6 +214,20 @@ test.describe('desktop', () => {
     await page.getByRole('radio', { name: 'Keys' }).click()
     await expect(table(page, 'customers')).toContainText('4 more columns')
     await expect(table(page, 'customers')).not.toContainText('full_name')
+  })
+
+  test('slides the switch thumb onto the chosen segment', async ({ page }) => {
+    const detail = page.getByRole('radiogroup', { name: 'Column detail' })
+    const thumb = detail.locator('span[aria-hidden]')
+    const names = detail.getByRole('radio', { name: 'Names' })
+    await names.click()
+    await expect(names).toHaveAttribute('data-state', 'on')
+    // Settled, the thumb covers exactly the chosen segment.
+    await expect(async () => {
+      const [a, b] = [(await thumb.boundingBox())!, (await names.boundingBox())!]
+      expect(Math.abs(a.x - b.x)).toBeLessThan(0.5)
+      expect(Math.abs(a.width - b.width)).toBeLessThan(0.5)
+    }).toPass()
   })
 
   test('remembers edits after a reload', async ({ page }) => {
