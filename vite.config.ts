@@ -17,7 +17,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       // Pure logic only. Components and browser glue are covered by the Playwright suite.
-      include: ['src/dbml/**', 'src/layout/**', 'src/share/**', 'src/export/svg.ts'],
+      include: [
+        'src/dbml/**',
+        'src/layout/**',
+        'src/share/**',
+        'src/export/svg.ts',
+        'src/export/mermaid.ts',
+        'src/export/markdown.ts',
+      ],
       exclude: [
         '**/*.test.ts',
         'src/test/**',
