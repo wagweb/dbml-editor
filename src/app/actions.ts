@@ -14,7 +14,7 @@ import {
 } from '@/store/diagram'
 import { useDocuments } from '@/store/documents'
 import { resolveTheme, useUi } from '@/store/ui'
-import { insetsFor, revealRect } from '@/store/viewport'
+import { clickInsets, insetsFor, revealRect } from '@/store/viewport'
 
 const NUDGE = 16
 
@@ -47,21 +47,27 @@ export function cancelPendingReveal(): void {
 }
 
 /**
- * Brings a selected table into view together with the tables in focus around it, clear of
- * the details panel. Falls back to the table alone when its surroundings do not fit.
+ * Brings a selected table into view, clear of the details panel. Jumps from search and
+ * from the keyboard also bring the tables in focus around it when they fit. A pointer
+ * click only moves the camera when the clicked table itself would be covered: moving the
+ * diagram after a click shifts the next table away from under the pointer.
  */
-function revealSelection(tableId: string, zoom: boolean): void {
+function revealSelection(tableId: string, options: { zoom: boolean; neighbours: boolean }): void {
   const { model, boxes, positions, emphasis } = useDiagram.getState()
   const table = model.tables.find((t) => t.id === tableId)
   const rect = table && tableRect(table, boxes, positions)
   if (!rect) return
-  const around = bounds(
-    [...(emphasis.focus ?? [tableId])].flatMap((id) => {
-      const other = tableRect({ id }, boxes, positions)
-      return other ? [other] : []
-    }),
-  )
-  revealRect(rect, { insets: insetsFor(true), around: around ?? rect, zoom })
+  const around = options.neighbours
+    ? bounds(
+        [...(emphasis.focus ?? [tableId])].flatMap((id) => {
+          const other = tableRect({ id }, boxes, positions)
+          return other ? [other] : []
+        }),
+      )
+    : null
+  // A clicked table only has to stay clear of the panel and the edges of the canvas.
+  const insets = options.neighbours ? insetsFor(true) : clickInsets()
+  revealRect(rect, { insets, around: around ?? rect, zoom: options.zoom })
 }
 
 /** Selects a table and brings it into view on the canvas and in the editor. */
@@ -75,10 +81,10 @@ export function focusTable(tableId: string, options: FocusOptions = {}): void {
   if (options.fromPointer) {
     pendingReveal = setTimeout(() => {
       pendingReveal = undefined
-      revealSelection(tableId, zoom)
+      revealSelection(tableId, { zoom, neighbours: false })
     }, DOUBLE_CLICK_MS)
   } else {
-    revealSelection(tableId, zoom)
+    revealSelection(tableId, { zoom, neighbours: true })
   }
   revealInEditor(table.range)
   if (options.focusPanel) {

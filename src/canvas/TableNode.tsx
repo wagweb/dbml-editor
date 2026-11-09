@@ -1,6 +1,7 @@
 import { ArrowUpRight, KeyRound, StickyNote } from 'lucide-react'
 import {
   memo,
+  useCallback,
   useRef,
   useState,
   type CSSProperties,
@@ -67,6 +68,22 @@ export const TableNode = memo(
     const [dragging, setDragging] = useState(false)
     const [editing, setEditing] = useState<Editing>(null)
     const card = useRef<HTMLElement>(null)
+
+    // Stable across renders, so a card that only changes its dimming does not re-render
+    // every row inside it.
+    const tableId = table.id
+    const editColumn = useCallback((column: string) => {
+      cancelPendingReveal()
+      setEditing({ column })
+    }, [])
+    const finishColumnEdit = useCallback(
+      (column: string, value: string | null) => {
+        setEditing(null)
+        requestAnimationFrame(() => card.current?.focus())
+        if (value !== null) renameColumnFromDiagram({ tableId, column }, value)
+      },
+      [tableId],
+    )
 
     const kind = table.kind ?? 'table'
     const editable = kind === 'table'
@@ -221,20 +238,8 @@ export const TableNode = memo(
                   linkSource={linkSource === column.name}
                   linkTarget={linkTarget === column.name}
                   editing={typeof editing === 'object' && editing?.column === column.name}
-                  onEdit={
-                    editable
-                      ? () => {
-                          cancelPendingReveal()
-                          setEditing({ column: column.name })
-                        }
-                      : undefined
-                  }
-                  onEditDone={(value) => {
-                    finishEdit()
-                    if (value !== null) {
-                      renameColumnFromDiagram({ tableId: table.id, column: column.name }, value)
-                    }
-                  }}
+                  onEdit={editable ? editColumn : undefined}
+                  onEditDone={finishColumnEdit}
                 />
               ))}
             </ul>
@@ -316,8 +321,8 @@ interface RowProps {
   linkSource: boolean
   linkTarget: boolean
   editing: boolean
-  onEdit: (() => void) | undefined
-  onEditDone: (value: string | null) => void
+  onEdit: ((column: string) => void) | undefined
+  onEditDone: (column: string, value: string | null) => void
 }
 
 const Row = memo(function Row({
@@ -341,7 +346,7 @@ const Row = memo(function Row({
       data-spotlight={spotlight}
       data-link-source={linkSource}
       data-link-target={linkTarget}
-      onDoubleClick={onEdit}
+      onDoubleClick={onEdit ? () => onEdit(column.name) : undefined}
     >
       {!plain && (
         <span className="flex shrink-0 items-center" style={{ width: GEOMETRY.iconSlot }}>
@@ -368,7 +373,7 @@ const Row = memo(function Row({
           initial={column.name}
           mono
           className="h-5 flex-1 text-xs"
-          onDone={onEditDone}
+          onDone={(value) => onEditDone(column.name, value)}
         />
       ) : (
         <span
@@ -427,7 +432,7 @@ function RelationHandle({ from }: { from: ColumnRef }) {
         if (!current.dragging) {
           if (Math.hypot(event.clientX - current.x, event.clientY - current.y) <= LINK_SLOP) return
           current.dragging = true
-          setHover(null)
+          setHover(null, { immediate: true })
           startLinkDrag(from, worldPoint(event))
         }
         moveLinkDrag(worldPoint(event), columnAt(event.clientX, event.clientY))

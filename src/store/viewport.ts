@@ -55,6 +55,18 @@ export function insetsFor(detailsOpen: boolean): Insets {
     : { ...DEFAULT_INSETS, right: 368 }
 }
 
+/**
+ * The area a clicked table has to stay in: the canvas minus the details panel, without the
+ * comfort margins. A table the user just clicked is visible; nudging it by a few pixels
+ * only moves the next target away from under the pointer.
+ */
+export function clickInsets(): Insets {
+  const panel = insetsFor(true)
+  return window.matchMedia('(max-width: 767px)').matches
+    ? panel
+    : { top: 0, right: panel.right - 16, bottom: 0, left: 0 }
+}
+
 let animation = 0
 
 function cancelAnimation(): void {

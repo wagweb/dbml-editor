@@ -267,7 +267,11 @@ function computeEmphasis(
     }
   }
 
-  if (hover) {
+  // With a table selected, the selection decides what is lit. Hovering other tables on
+  // the way to the next click must not light their relations into the greyed-out rest;
+  // only a single hovered line still shows, for its tooltip.
+  const hoverCounts = hover !== null && (selectedTableId === null || hover.kind === 'ref')
+  if (hover && hoverCounts) {
     for (const ref of model.refs) {
       let hovered = false
       if (hover.kind === 'ref') hovered = hover.refId === ref.id
@@ -547,6 +551,7 @@ function forgetUndo(): void {
 // ---------------------------------------------------------------- documents and source
 
 export async function openDocument(doc: DiagramDocument): Promise<void> {
+  cancelPendingHover()
   generation += 1
   sourceVersion += 1
   const token = generation
@@ -606,6 +611,7 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
 
 /** Back to the start screen: nothing is open, and nothing that was in flight may land. */
 export function closeDocument(): void {
+  cancelPendingHover()
   generation += 1
   sourceVersion += 1
   if (parseTimer) clearTimeout(parseTimer)
@@ -649,6 +655,7 @@ export function sourceChanged(source: string): void {
 }
 
 async function applyModel(full: SchemaModel, diagnostics: Diagnostic[]): Promise<void> {
+  cancelPendingHover()
   generation += 1
   const token = generation
   const version = sourceVersion
@@ -754,6 +761,7 @@ export function setCursorOffset(offset: number | null): void {
 
 /** Switches to a DiagramView (or back to everything). Each view keeps its own arrangement. */
 export async function setView(view: string | null): Promise<void> {
+  cancelPendingHover()
   const state = get()
   if (view === state.view || !state.ready) return
   generation += 1
@@ -789,6 +797,7 @@ async function relayout(
   detail: DetailLevel,
   options: { remember: boolean; fresh: boolean },
 ): Promise<boolean> {
+  cancelPendingHover()
   const state = get()
   // While a document is still opening there is nothing to arrange yet.
   if (!state.ready) return false
@@ -919,13 +928,42 @@ export function setPathTarget(tableId: string | null): void {
   if (area) frameRect(area, { insets: insetsFor(true) })
 }
 
-export function setHover(hover: Hover | null): void {
-  const state = get()
-  if (sameHover(state.hover, hover)) return
-  set({
-    hover,
-    emphasis: emphasisFor(state.model, state.selectedTableId, state.pathTargetId, hover),
-  })
+/**
+ * Hover only counts once the pointer rests. On its way to another table it crosses cards,
+ * rows and lines; highlighting each of them for a moment made the whole diagram flicker.
+ */
+const HOVER_INTENT_MS = 90
+/** Leaving waits a little too, so moving between two parts of one card does not blink. */
+const HOVER_LEAVE_MS = 60
+let hoverTimer: ReturnType<typeof setTimeout> | undefined
+/** The hover that waits for its timer; undefined while nothing waits. */
+let pendingHover: Hover | null | undefined
+
+function cancelPendingHover(): void {
+  if (hoverTimer) clearTimeout(hoverTimer)
+  hoverTimer = undefined
+  pendingHover = undefined
+}
+
+export function setHover(hover: Hover | null, options: { immediate?: boolean } = {}): void {
+  if (pendingHover !== undefined && sameHover(pendingHover, hover) && !options.immediate) return
+  cancelPendingHover()
+  if (sameHover(get().hover, hover)) return
+  const apply = () => {
+    cancelPendingHover()
+    const state = get()
+    if (sameHover(state.hover, hover)) return
+    const emphasis = emphasisFor(state.model, state.selectedTableId, state.pathTargetId, hover)
+    // Most hovers change nothing that is drawn (with a table selected they never do); then
+    // the old object stays, and nothing that reads the emphasis renders again.
+    set(sameEmphasis(state.emphasis, emphasis) ? { hover } : { hover, emphasis })
+  }
+  if (options.immediate || prefersReducedMotion()) {
+    apply()
+    return
+  }
+  pendingHover = hover
+  hoverTimer = setTimeout(apply, hover === null ? HOVER_LEAVE_MS : HOVER_INTENT_MS)
 }
 
 /** Flashes a column found by search, on the card and in the details. */
@@ -933,6 +971,23 @@ export function spotlightColumn(spotlight: Spotlight | null): void {
   if (spotlightTimer) clearTimeout(spotlightTimer)
   set({ spotlight })
   if (spotlight) spotlightTimer = setTimeout(() => set({ spotlight: null }), SPOTLIGHT_MS)
+}
+
+function sameSet<T>(a: ReadonlySet<T> | null, b: ReadonlySet<T> | null): boolean {
+  if (a === b) return true
+  if (!a || !b || a.size !== b.size) return false
+  for (const value of a) if (!b.has(value)) return false
+  return true
+}
+
+function sameEmphasis(a: Emphasis, b: Emphasis): boolean {
+  if (a === b) return true
+  if (!sameSet(a.refIds, b.refIds) || !sameSet(a.focus, b.focus)) return false
+  if (a.columns.size !== b.columns.size) return false
+  for (const [id, names] of a.columns) if (b.columns.get(id) !== names) return false
+  const pathA = a.path?.join('\n') ?? null
+  const pathB = b.path?.join('\n') ?? null
+  return pathA === pathB
 }
 
 function sameHover(a: Hover | null, b: Hover | null): boolean {

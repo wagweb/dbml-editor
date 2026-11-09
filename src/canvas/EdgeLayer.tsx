@@ -22,13 +22,9 @@ export function EdgeLayer() {
   )
   const refs = useMemo(() => new Map(model.refs.map((r) => [r.id, r])), [model])
 
-  const ordered = useMemo(() => {
-    if (emphasis.refIds.size === 0) return edges
-    return [
-      ...edges.filter((e) => !emphasis.refIds.has(e.refId)),
-      ...edges.filter((e) => emphasis.refIds.has(e.refId)),
-    ]
-  }, [edges, emphasis])
+  // The order stays as it is. Moving lit lines to the end moved their DOM nodes, which
+  // cancels their fade: some lines snapped while others faded, which read as a flicker.
+  const ordered = edges
 
   return (
     <svg className="edge-layer" width="1" height="1" aria-hidden>
