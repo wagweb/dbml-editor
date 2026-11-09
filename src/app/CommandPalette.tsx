@@ -7,6 +7,7 @@ import {
   FileText,
   FolderOpen,
   Image,
+  KeyRound,
   Keyboard,
   Layers,
   Link2,
@@ -16,14 +17,13 @@ import {
   Save,
   Search,
   Shapes,
-  Sparkles,
   SunMoon,
   Table2,
+  Workflow,
 } from 'lucide-react'
 import { Dialog } from 'radix-ui'
 import { useState, type ReactNode } from 'react'
-import { isTable, type SchemaModel } from '@/dbml/model'
-import { SAMPLES } from '@/dbml/samples'
+import { isTable, type ColumnModel, type SchemaModel, type TableModel } from '@/dbml/model'
 import { revealInEditor } from '@/editor/bridge'
 import { tableTitle } from '@/layout/geometry'
 import {
@@ -37,15 +37,18 @@ import {
 import { sortedDocuments, useDocuments } from '@/store/documents'
 import { useUi, type PaletteMode } from '@/store/ui'
 import { Kbd } from '@/ui/Kbd'
-import { arrangeWithUndo, focusTable, newDiagram, openSample, toggleTheme } from './actions'
-import { DETAIL_LEVELS } from './constants'
+import { arrangeWithUndo, focusTable, newDiagram, toggleTheme } from './actions'
+import { DETAIL_LEVELS, SEARCH_LABEL } from './constants'
 import { addRelationFromDiagram, type ColumnRef } from './editActions'
+import { matchScore } from './search'
 import { copyShareLink, exportPng, exportSvg } from './exportActions'
 import { openFile, saveFile } from './fileActions'
 
 /** Columns only join the results once the search is specific enough to keep the list short. */
 const COLUMN_SEARCH_MIN = 2
 const COLUMN_RESULTS_MAX = 40
+/** Without a search, the list starts with the best connected tables instead of all of them. */
+const TABLES_WITHOUT_QUERY = 6
 
 /** Search for tables and columns and run any action from the keyboard. */
 export function CommandPalette() {
@@ -76,7 +79,7 @@ export function CommandPalette() {
 function titleFor(mode: PaletteMode): string {
   if (mode.kind === 'path') return 'Choose the table to find a path to'
   if (mode.kind === 'relation') return 'Choose the column the relation points at'
-  return 'Search tables and actions'
+  return SEARCH_LABEL
 }
 
 /** Runs after the dialog closed, so focus lands where the action puts it. */
@@ -98,24 +101,24 @@ function PaletteCommands({ close }: { close: () => void }) {
 
   const run = (action: () => void) => runLater(close, action)
   const ui = useUi.getState()
+  const hasDiagram = activeId !== null
+  const searching = query.trim().length > 0
   const groups = new Map(model.groups.map((g) => [g.id, g.name]))
   const others = sortedDocuments(documents).filter((d) => d.id !== activeId)
-  const tables = model.tables.filter(isTable)
+  const tables = searching ? model.tables.filter(isTable) : hubTables(model)
   const enums = model.tables.filter((t) => t.kind === 'enum')
   const columns = query.trim().length >= COLUMN_SEARCH_MIN ? matchingColumns(model, query) : []
 
   return (
-    <Command loop label="Search tables and actions">
-      <div className="flex h-12 items-center gap-2.5 border-b border-line pr-3 pl-4">
-        <Search aria-hidden className="size-4 shrink-0 text-ink-3" strokeWidth={1.75} />
+    <Command loop label={SEARCH_LABEL} filter={matchScore}>
+      <SearchRow>
         <Command.Input
-          placeholder="Search tables, columns and actions"
+          placeholder={hasDiagram ? SEARCH_LABEL : 'Search actions'}
           value={query}
           onValueChange={setQuery}
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
         />
-        <Kbd shortcut="Esc" />
-      </div>
+      </SearchRow>
       <Command.List className="max-h-[min(420px,56vh)] overflow-y-auto overscroll-contain p-1.5">
         <Command.Empty className="px-3 py-8 text-center text-[13px] text-ink-2">
           Nothing matches that search.
@@ -126,14 +129,21 @@ function PaletteCommands({ close }: { close: () => void }) {
             {tables.map((table) => (
               <Item
                 key={table.id}
-                value={`table ${tableTitle(table)}`}
+                value={tableTitle(table)}
+                keywords={['table', table.groupId ? (groups.get(table.groupId) ?? '') : '']}
                 icon={<Table2 />}
                 hint={table.groupId ? groups.get(table.groupId) : undefined}
-                onSelect={run(() => focusTable(table.id, { focusPanel: true }))}
+                onSelect={run(() => focusTable(table.id, { focusPanel: true, zoom: true }))}
               >
                 {tableTitle(table)}
               </Item>
             ))}
+            {!searching && model.tables.filter(isTable).length > tables.length && (
+              <p className="px-2.5 pt-0.5 pb-1 text-xs text-ink-3">
+                Most connected first. Type to search all {model.tables.filter(isTable).length}{' '}
+                tables and their columns.
+              </p>
+            )}
           </Group>
         )}
 
@@ -142,11 +152,12 @@ function PaletteCommands({ close }: { close: () => void }) {
             {columns.map(({ table, column }) => (
               <Item
                 key={`${table.id}.${column.name}`}
-                value={`column ${tableTitle(table)}.${column.name} ${column.type}`}
+                value={`${tableTitle(table)}.${column.name}`}
+                keywords={['column', column.type]}
                 icon={<Columns3 />}
                 hint={column.type}
                 onSelect={run(() => {
-                  focusTable(table.id, { focusPanel: true })
+                  focusTable(table.id, { focusPanel: true, zoom: true })
                   revealInEditor(column.range)
                   spotlightColumn({ tableId: table.id, column: column.name })
                 })}
@@ -157,7 +168,7 @@ function PaletteCommands({ close }: { close: () => void }) {
           </Group>
         )}
 
-        {enums.length > 0 && (
+        {searching && enums.length > 0 && (
           <Group heading="Enums">
             {enums.map((item) => (
               <Item
@@ -165,7 +176,7 @@ function PaletteCommands({ close }: { close: () => void }) {
                 value={`enum ${tableTitle(item)}`}
                 icon={<Shapes />}
                 hint={`${item.columns.length} values`}
-                onSelect={run(() => focusTable(item.id, { focusPanel: true }))}
+                onSelect={run(() => focusTable(item.id, { focusPanel: true, zoom: true }))}
               >
                 {tableTitle(item)}
               </Item>
@@ -176,7 +187,8 @@ function PaletteCommands({ close }: { close: () => void }) {
         {fullModel.views.length > 0 && (
           <Group heading="Views">
             <Item
-              value="view all tables"
+              value="All tables"
+              keywords={['view']}
               icon={<Layers />}
               hint={view === null ? 'shown' : undefined}
               onSelect={run(() => void setView(null))}
@@ -197,36 +209,43 @@ function PaletteCommands({ close }: { close: () => void }) {
           </Group>
         )}
 
-        <Group heading="Diagram">
-          <Item icon={<Sparkles />} shortcut="shift+A" onSelect={run(() => void arrangeWithUndo())}>
-            Tidy up layout
-          </Item>
-          <Item icon={<Maximize />} shortcut="1" onSelect={run(() => fitContent(true))}>
-            Fit diagram to screen
-          </Item>
-          {DETAIL_LEVELS.map((level) => (
+        {hasDiagram && (
+          <Group heading="Diagram">
             <Item
-              key={level.value}
-              value={`show columns ${level.label}`}
-              icon={<Table2 />}
-              onSelect={run(() => void setDetail(level.value))}
+              icon={<Workflow />}
+              shortcut="shift+A"
+              onSelect={run(() => void arrangeWithUndo())}
             >
-              {`Show ${level.label.toLowerCase()}`}
+              Tidy up layout
             </Item>
-          ))}
-          <Item icon={<Image />} onSelect={run(() => void exportPng())}>
-            Export as image (PNG)
-          </Item>
-          <Item icon={<Shapes />} onSelect={run(() => void exportSvg())}>
-            Export as vector image (SVG)
-          </Item>
-          <Item icon={<Database />} onSelect={run(() => ui.openDialog('export-sql'))}>
-            Export as SQL script
-          </Item>
-          <Item icon={<Link2 />} onSelect={run(() => void copyShareLink())}>
-            Copy share link
-          </Item>
-        </Group>
+            <Item icon={<Maximize />} shortcut="1" onSelect={run(() => fitContent(true))}>
+              Fit diagram to screen
+            </Item>
+            {DETAIL_LEVELS.map((level) => (
+              <Item
+                key={level.value}
+                value={level.command}
+                keywords={['columns', 'detail']}
+                icon={<Table2 />}
+                onSelect={run(() => void setDetail(level.value))}
+              >
+                {level.command}
+              </Item>
+            ))}
+            <Item icon={<Image />} onSelect={run(() => void exportPng())}>
+              Export as image (PNG)
+            </Item>
+            <Item icon={<Shapes />} onSelect={run(() => void exportSvg())}>
+              Export as vector image (SVG)
+            </Item>
+            <Item icon={<Database />} onSelect={run(() => ui.openDialog('export-sql'))}>
+              Export as SQL script
+            </Item>
+            <Item icon={<Link2 />} onSelect={run(() => void copyShareLink())}>
+              Copy share link
+            </Item>
+          </Group>
+        )}
 
         <Group heading="App">
           <Item icon={<Plus />} onSelect={run(newDiagram)}>
@@ -235,15 +254,19 @@ function PaletteCommands({ close }: { close: () => void }) {
           <Item icon={<FolderOpen />} shortcut="mod+O" onSelect={run(() => void openFile())}>
             Open DBML file
           </Item>
-          <Item icon={<Save />} shortcut="mod+S" onSelect={run(() => void saveFile())}>
-            Save to file
-          </Item>
-          <Item icon={<FileInput />} onSelect={run(() => ui.openDialog('import-sql'))}>
+          {hasDiagram && (
+            <Item icon={<Save />} shortcut="mod+S" onSelect={run(() => void saveFile())}>
+              Save to file
+            </Item>
+          )}
+          <Item icon={<FileInput />} onSelect={run(() => ui.openImport())}>
             Import from SQL
           </Item>
-          <Item icon={<PanelLeft />} shortcut="mod+\" onSelect={run(ui.toggleEditor)}>
-            Show or hide code
-          </Item>
+          {hasDiagram && (
+            <Item icon={<PanelLeft />} shortcut="mod+\" onSelect={run(ui.toggleEditor)}>
+              Show or hide code
+            </Item>
+          )}
           <Item icon={<SunMoon />} onSelect={run(toggleTheme)}>
             Switch between light and dark theme
           </Item>
@@ -257,7 +280,8 @@ function PaletteCommands({ close }: { close: () => void }) {
             {others.map((doc) => (
               <Item
                 key={doc.id}
-                value={`open diagram ${doc.name} ${doc.id}`}
+                value={`${doc.name} ${doc.id}`}
+                keywords={['open', 'diagram']}
                 icon={<FileText />}
                 onSelect={run(() => useDocuments.getState().open(doc.id))}
               >
@@ -266,37 +290,36 @@ function PaletteCommands({ close }: { close: () => void }) {
             ))}
           </Group>
         )}
-
-        <Group heading="Examples">
-          {SAMPLES.map((sample) => (
-            <Item
-              key={sample.id}
-              value={`example ${sample.name}`}
-              icon={<FileText />}
-              hint={sample.description}
-              onSelect={run(() => openSample(sample))}
-            >
-              {sample.name}
-            </Item>
-          ))}
-        </Group>
       </Command.List>
     </Command>
   )
 }
 
+/** The tables with the most relations, as a short start list. */
+function hubTables(model: SchemaModel): TableModel[] {
+  const degree = new Map<string, number>()
+  for (const ref of model.refs) {
+    if (ref.kind === 'enum') continue
+    for (const id of new Set([ref.child.tableId, ref.parent.tableId])) {
+      degree.set(id, (degree.get(id) ?? 0) + 1)
+    }
+  }
+  return model.tables
+    .filter(isTable)
+    .map((table, index) => ({ table, index, degree: degree.get(table.id) ?? 0 }))
+    .sort((a, b) => b.degree - a.degree || a.index - b.index)
+    .slice(0, TABLES_WITHOUT_QUERY)
+    .map((entry) => entry.table)
+}
+
 /** Columns whose table or name contains every word of the query. */
 function matchingColumns(model: SchemaModel, query: string) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  const results: {
-    table: SchemaModel['tables'][number]
-    column: SchemaModel['tables'][number]['columns'][number]
-  }[] = []
+  const results: { table: TableModel; column: ColumnModel }[] = []
   for (const table of model.tables) {
     if (!isTable(table)) continue
     for (const column of table.columns) {
-      const text = `${tableTitle(table)}.${column.name} ${column.type}`.toLowerCase()
-      if (words.every((word) => text.includes(word))) results.push({ table, column })
+      const value = `${tableTitle(table)}.${column.name}`
+      if (matchScore(value, query, [column.type]) > 0) results.push({ table, column })
       if (results.length >= COLUMN_RESULTS_MAX) return results
     }
   }
@@ -321,7 +344,7 @@ function Picker({
 
   if (mode.kind === 'path') {
     return (
-      <Command loop label={titleFor(mode)}>
+      <Command loop label={titleFor(mode)} filter={matchScore}>
         <PickerHeader>Path from {nameOf(mode.fromId)} to</PickerHeader>
         <Command.List className="max-h-[min(420px,56vh)] overflow-y-auto overscroll-contain p-1.5">
           <Command.Empty className="px-3 py-8 text-center text-[13px] text-ink-2">
@@ -332,7 +355,7 @@ function Picker({
             .map((table) => (
               <Item
                 key={table.id}
-                value={`table ${tableTitle(table)}`}
+                value={tableTitle(table)}
                 icon={<Table2 />}
                 onSelect={run(() => setPathTarget(table.id))}
               >
@@ -345,8 +368,13 @@ function Picker({
   }
 
   const from: ColumnRef = mode.from
+  const source = model.tables
+    .find((t) => t.id === from.tableId)
+    ?.columns.find((c) => c.name === from.column)
+  const targets = relationTargets(tables, from, source)
+
   return (
-    <Command loop label={titleFor(mode)}>
+    <Command loop label={titleFor(mode)} filter={matchScore}>
       <PickerHeader>
         Relation from {nameOf(from.tableId)}.{from.column} to
       </PickerHeader>
@@ -354,27 +382,63 @@ function Picker({
         <Command.Empty className="px-3 py-8 text-center text-[13px] text-ink-2">
           No column matches that search.
         </Command.Empty>
-        {tables.map((table) => (
-          <Group key={table.id} heading={tableTitle(table)}>
-            {table.columns
-              .filter((c) => table.id !== from.tableId || c.name !== from.column)
-              .map((column) => (
+        {targets.map(({ heading, items }) =>
+          items.length === 0 ? null : (
+            <Group key={heading} heading={heading}>
+              {items.map(({ table, column }) => (
                 <Item
-                  key={column.name}
-                  value={`${tableTitle(table)}.${column.name} ${column.type}`}
-                  icon={<Columns3 />}
+                  key={`${table.id}.${column.name}`}
+                  value={`${tableTitle(table)}.${column.name}`}
+                  keywords={[column.type]}
+                  icon={column.pk || column.unique ? <KeyRound /> : <Columns3 />}
                   hint={column.type}
                   onSelect={run(() =>
                     addRelationFromDiagram(from, { tableId: table.id, column: column.name }),
                   )}
                 >
-                  {column.name}
+                  {`${tableTitle(table)}.${column.name}`}
                 </Item>
               ))}
-          </Group>
-        ))}
+            </Group>
+          ),
+        )}
       </Command.List>
     </Command>
+  )
+}
+
+/**
+ * Columns a relation can point at, best first: keys of the same type, other keys, then the
+ * rest. The table the relation starts from is left out; a self reference is rare enough to
+ * write in the code.
+ */
+function relationTargets(tables: TableModel[], from: ColumnRef, source: ColumnModel | undefined) {
+  const sameType = (column: ColumnModel) =>
+    source !== undefined && column.type.toLowerCase() === source.type.toLowerCase()
+  const keys: { table: TableModel; column: ColumnModel; rank: number }[] = []
+  const rest: { table: TableModel; column: ColumnModel }[] = []
+  for (const table of tables) {
+    if (table.id === from.tableId) continue
+    for (const column of table.columns) {
+      if (column.pk || column.unique) keys.push({ table, column, rank: sameType(column) ? 0 : 1 })
+      else rest.push({ table, column })
+    }
+  }
+  keys.sort((a, b) => a.rank - b.rank)
+  return [
+    { heading: 'Keys', items: keys },
+    { heading: 'Other columns', items: rest },
+  ]
+}
+
+function SearchRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-12 items-center gap-2.5 border-b border-line pr-3 pl-4">
+      <Search aria-hidden className="size-4 shrink-0 text-ink-3" strokeWidth={1.75} />
+      {children}
+      {/* A hint for keyboards; touch screens close the palette by tapping outside. */}
+      <Kbd shortcut="Esc" className="pointer-coarse:hidden" />
+    </div>
   )
 }
 
@@ -389,7 +453,7 @@ function PickerHeader({ children }: { children: ReactNode }) {
           placeholder="Type to filter"
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
         />
-        <Kbd shortcut="Esc" />
+        <Kbd shortcut="Esc" className="pointer-coarse:hidden" />
       </div>
     </div>
   )
@@ -408,6 +472,7 @@ function Group({ heading, children }: { heading: string; children: ReactNode }) 
 
 interface ItemProps {
   value?: string
+  keywords?: string[]
   icon: ReactNode
   hint?: string
   shortcut?: string
@@ -415,17 +480,23 @@ interface ItemProps {
   children: string
 }
 
-function Item({ value, icon, hint, shortcut, onSelect, children }: ItemProps) {
+function Item({ value, keywords, icon, hint, shortcut, onSelect, children }: ItemProps) {
   return (
     <Command.Item
       value={value ?? children}
+      keywords={keywords?.filter(Boolean)}
       onSelect={onSelect}
       className="group/item flex h-9 cursor-default items-center gap-2.5 rounded-control px-2.5 text-[13px] text-ink select-none data-[selected=true]:bg-fill-strong [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-ink-2"
     >
       {icon}
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {hint && <span className="max-w-[45%] truncate text-xs text-ink-3">{hint}</span>}
-      {shortcut && <Kbd plain shortcut={shortcut} className="text-ink-3" />}
+      {/* The selected row is darker, so its hint steps up a grey to keep 4.5:1. */}
+      {hint && (
+        <span className="max-w-[45%] truncate text-xs text-ink-3 group-data-[selected=true]/item:text-ink-2">
+          {hint}
+        </span>
+      )}
+      {shortcut && <Kbd plain tone="muted" shortcut={shortcut} />}
       {/* Marks the row Enter will run. Always takes its space, so rows do not jump. */}
       <CornerDownLeft
         aria-hidden
