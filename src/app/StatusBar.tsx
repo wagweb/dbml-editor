@@ -8,6 +8,7 @@ import { useDiagram } from '@/store/diagram'
 import { useUi } from '@/store/ui'
 import { Button } from '@/ui/Button'
 import { Kbd } from '@/ui/Kbd'
+import { RING_ALIGN_OFFSET } from '@/ui/Menu'
 import { focusTable, goToFirstProblem } from './actions'
 import { DBML_DOCS_URL } from './constants'
 import { addIndexesFromDiagram } from './editActions'
@@ -135,6 +136,7 @@ function HintsButton({ hints }: { hints: Hint[] }) {
         <Popover.Content
           side="top"
           align="end"
+          alignOffset={RING_ALIGN_OFFSET}
           sideOffset={8}
           collisionPadding={8}
           aria-label="Schema hints"

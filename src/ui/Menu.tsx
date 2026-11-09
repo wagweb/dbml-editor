@@ -16,15 +16,24 @@ export const MenuSub = DropdownMenu.Sub
 const ITEM =
   'flex min-h-8 cursor-default items-center gap-2.5 rounded-control px-2 text-[13px] outline-hidden select-none data-disabled:opacity-40 data-highlighted:bg-fill-strong keyboard:data-highlighted:shadow-[inset_0_0_0_1.5px_var(--accent)] [&_svg]:size-4 [&_svg]:shrink-0'
 
+/**
+ * The outline of a floating surface is a ring drawn outside its box (`--shadow-pop`). The
+ * align offset moves the box inward by that ring, so the visible edge of a menu lines up
+ * with the edge of its button: left with left for `start`, right with right for `end`.
+ */
+export const RING_ALIGN_OFFSET = 1
+
 export function MenuContent({
   className,
   sideOffset = 6,
+  alignOffset = RING_ALIGN_OFFSET,
   ...props
 }: ComponentProps<typeof DropdownMenu.Content>) {
   return (
     <DropdownMenu.Portal>
       <DropdownMenu.Content
         sideOffset={sideOffset}
+        alignOffset={alignOffset}
         collisionPadding={8}
         className={cn(
           'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-52 origin-(--radix-dropdown-menu-content-transform-origin) animate-pop-in overflow-y-auto rounded-panel bg-surface p-1 shadow-pop',
