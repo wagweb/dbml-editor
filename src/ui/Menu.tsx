@@ -2,7 +2,7 @@ import { Check } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import type { ComponentProps, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
-import { shortcutLabel } from '@/lib/platform'
+import { Kbd } from './Kbd'
 
 export const Menu = DropdownMenu.Root
 export const MenuTrigger = DropdownMenu.Trigger
@@ -106,9 +106,7 @@ function Trailing({ hint, shortcut }: { hint?: ReactNode; shortcut?: string }) {
   return (
     <>
       {hint && <span className="shrink-0 text-xs text-ink-3">{hint}</span>}
-      {shortcut && (
-        <span className="shrink-0 font-mono text-[11px] text-ink-3">{shortcutLabel(shortcut)}</span>
-      )}
+      {shortcut && <Kbd plain shortcut={shortcut} className="text-ink-3" />}
     </>
   )
 }

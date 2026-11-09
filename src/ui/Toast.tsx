@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/cn'
-import { shortcutLabel } from '@/lib/platform'
+import { Kbd } from './Kbd'
 import { useUi } from '@/store/ui'
 
 const VISIBLE_MS = 6000
@@ -53,9 +53,7 @@ export function Toaster() {
               }}
             >
               {toast.action.label}
-              <kbd className="font-mono text-[10.5px] font-normal opacity-75">
-                {shortcutLabel('mod+Z')}
-              </kbd>
+              <Kbd shortcut="mod+Z" className="h-[18px] text-current" />
             </button>
           )}
           <button
