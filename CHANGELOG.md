@@ -87,6 +87,14 @@
 - Relation lines vanished for about half a second after every layout change; they now
   return while the tables settle.
 - Opening a share link in a tab that was already open did nothing.
+- A frame without content flashed up shortly after clicking a table: opacity animations
+  on lines and handles made Chrome create and drop dozens of GPU layers at once. The
+  canvas no longer animates opacity; a click keeps the layer count steady.
+- The keyboard ring in menus could vanish while the mouse rested on the menu.
+- Switching between selected tables flickered: the next table's relations lit up on hover
+  before the click, rows re-rendered needlessly and lines snapped while others faded. A
+  switch now changes the picture once, and the camera stays put unless the clicked table
+  would be covered.
 - Clicking a table while zoomed out made the whole canvas flicker: the camera zoomed in and
   every card switched from its name to its rows at once. Clicks no longer zoom, and changes
   between the levels of detail and the greying of a selection now fade.

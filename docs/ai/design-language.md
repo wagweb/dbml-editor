@@ -152,13 +152,19 @@ Check a new name against the Tailwind utility list before adding it.
 
 - Scroll pans, pinch or Ctrl/Cmd + scroll zooms. Drawing tools work this way and a
   trackpad never zooms by accident.
-- Hover shows, click selects. Hovering a table or relation highlights; clicking a table
+- Hover shows, click selects. Hover counts once the pointer rests (90 ms), so crossing the
+  diagram lights nothing on the way. While a table is selected, hovering other tables
+  changes nothing; only a hovered line still shows. Hovering a table or relation highlights; clicking a table
   selects it, opens the details panel and reveals its code. A click leaves the camera
   alone while most of the table is on screen, so a double-click lands where it started.
   Shift-click a second table to ask for the path between the two. A click never zooms;
   only a jump from search or from a hint may zoom in to make columns readable.
-- Levels of detail crossfade (160 ms) and the greying of a selection fades (140 ms). The
-  picture never switches as a whole in one frame.
+- No opacity transitions or animations inside the canvas. Chrome lifts every element
+  with a running opacity animation onto its own GPU layer, and everything above it
+  follows; a click once doubled the layers and showed a frame without content. Lines
+  fade with `stroke-opacity`, handles and levels of detail switch by `visibility`, card
+  headers and outlines fade their colours. Overlays above the canvas (panel, menus,
+  toasts) may still fade.
 - Hints are advice, never alarms: a dotted underline in the text colour in the editor, a
   count in the status bar that opens a list, and a switch to turn them off.
 - Nothing disappears on an error. The last valid diagram stays, with a notice.

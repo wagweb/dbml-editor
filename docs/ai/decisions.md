@@ -178,3 +178,26 @@ with `(revised by #N)`.
     relations in the details panel pan at most. Crossing a level of detail is a 160 ms
     crossfade, and the greying of a selection fades in, so no change of the picture is a
     hard cut.
+47. **2026-11-09: Switching tables changes the picture once.** Reported by Niklas as
+    flicker at 70% zoom. Measured with GPU rendering, render counters and frame analysis:
+    hovering the next table lit its relations into the greyed-out picture before the click
+    switched everything, rows re-rendered because of unstable callbacks (798 renders,
+    117 ms frames on 80 tables), and lit lines were moved to the end of the SVG, which
+    cancelled their fades. Now hover adds nothing while a table is selected (a hovered line
+    still shows), a hover that changes nothing keeps the emphasis object, row callbacks are
+    stable, lines keep their order, and only the card header and outline fade. Hover
+    counts after the pointer rests for 90 ms, and a click moves the camera only when the
+    clicked table would be covered.
+48. **2026-11-09: No opacity animations inside the canvas.** Found in a screen recording by
+    Niklas: one frame about 180 ms after a click showed no page content, only Chrome's
+    background (#1c2c34). Measured with the DevTools layer tree: every click started
+    opacity animations (the relation pulse, the greying of lines, the handles fading in),
+    Chrome gave each animated element a GPU layer and, by overlap, everything painted above
+    it too. Layers jumped from 26 to 76 and their area from 12 to 27 Mpx, then fell back;
+    in that churn a frame went out without content. Lines now fade with `stroke-opacity`,
+    handles and levels of detail switch by `visibility`, and the lines hide during a glide
+    by `visibility`. A click now keeps the layer count at 12 to 13. An end-to-end test
+    checks that a selection change does not raise the count.
+49. **2026-11-09: Only real pointer movement counts as mouse use.** Chrome reports a move
+    when content changes under a resting pointer; that switched the keyboard ring off in
+    menus. The input modality now ignores moves without a change of position.
