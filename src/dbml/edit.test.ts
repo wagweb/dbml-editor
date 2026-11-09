@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { suggestGroups } from './communities'
-import { addGroups, addRelation, applyEdits, diffEdit, renameColumn, renameTable } from './edit'
+import {
+  addGroups,
+  addIndex,
+  addRelation,
+  applyEdits,
+  diffEdit,
+  renameColumn,
+  renameTable,
+} from './edit'
 import { parseDbml } from './parse'
-import { SAMPLES } from './samples'
+import { SAMPLES } from '@/test/schemas'
 
 const SOURCE = `Table users as U {
   id int [pk]
@@ -171,5 +179,27 @@ describe('addGroups', () => {
     const after = parseDbml(applyEdits(flat, edits!))
     expect(after.diagnostics).toEqual([])
     expect(after.model!.groups).toHaveLength(groups.length)
+  })
+})
+
+describe('addIndex', () => {
+  it('adds a block to a table without indexes', () => {
+    const result = edited(addIndex(SOURCE, model, 'teams', ['owner_id']))
+    expect(result).toMatch(
+      /Table teams \{\n {2}id int \[pk\]\n {2}owner_id int\n\n? {2}indexes \{\n {4}owner_id\n {2}\}\n\}/,
+    )
+    const table = parseDbml(result).model!.tables.find((t) => t.id === 'teams')!
+    expect(table.indexes.map((i) => i.columns)).toEqual([['owner_id']])
+  })
+
+  it('extends an existing block and handles composite indexes', () => {
+    const result = edited(addIndex(SOURCE, model, 'users', ['id', 'email']))
+    const table = parseDbml(result).model!.tables.find((t) => t.id === 'users')!
+    expect(table.indexes.map((i) => i.columns)).toContainEqual(['id', 'email'])
+    expect(table.indexes).toHaveLength(4)
+  })
+
+  it('refuses unknown tables', () => {
+    expect(addIndex(SOURCE, model, 'nope', ['id'])).toBeNull()
   })
 })

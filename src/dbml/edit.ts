@@ -229,3 +229,62 @@ function appendBlock(source: string, block: string): TextEdit {
     source.length === 0 ? '' : source.endsWith('\n\n') ? '' : source.endsWith('\n') ? '\n' : '\n\n'
   return { from: source.length, to: source.length, insert: `${gap}${block}\n` }
 }
+
+/**
+ * Adds an index on the given columns to a table: into its `indexes` block when it has one,
+ * otherwise as a new block at the end of the table.
+ */
+export function addIndex(
+  source: string,
+  model: SchemaModel,
+  tableId: string,
+  columns: string[],
+): TextEdit[] | null {
+  const table = model.tables.find((t) => t.id === tableId && isTable(t))
+  if (!table || columns.length === 0) return null
+  const entry =
+    columns.length === 1 ? quoteName(columns[0]!) : `(${columns.map(quoteName).join(', ')})`
+  const indent = lineIndent(source, table.columns[0]?.range.from ?? table.range.from) || '  '
+
+  const body = source.slice(table.range.from, table.range.to)
+  const open = /\bindexes\s*\{/i.exec(body)
+  if (open) {
+    const start = table.range.from + open.index + open[0].length
+    const close = matchingBrace(source, start, table.range.to)
+    if (close === -1) return null
+    const lineStart = source.lastIndexOf('\n', close - 1) + 1
+    const onOwnLine = source.slice(lineStart, close).trim() === ''
+    const at = onOwnLine ? lineStart : close
+    const insert = onOwnLine ? `${indent}${indent}${entry}\n` : ` ${entry} `
+    return accept(source, [{ from: at, to: at, insert }])
+  }
+
+  const close = source.lastIndexOf('}', table.range.to - 1)
+  if (close < table.range.from) return null
+  const lineStart = source.lastIndexOf('\n', close - 1) + 1
+  const onOwnLine = source.slice(lineStart, close).trim() === ''
+  const block = `\n${indent}indexes {\n${indent}${indent}${entry}\n${indent}}\n`
+  return accept(source, [
+    onOwnLine
+      ? { from: lineStart, to: lineStart, insert: block.slice(1) }
+      : { from: close, to: close, insert: block },
+  ])
+}
+
+function lineIndent(source: string, offset: number): string {
+  const lineStart = source.lastIndexOf('\n', offset - 1) + 1
+  return /^[ \t]*/.exec(source.slice(lineStart))?.[0] ?? ''
+}
+
+/** Position of the `}` that closes the block opened just before `start`, or -1. */
+function matchingBrace(source: string, start: number, limit: number): number {
+  let depth = 1
+  for (let i = start; i < limit; i += 1) {
+    if (source[i] === '{') depth += 1
+    else if (source[i] === '}') {
+      depth -= 1
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}

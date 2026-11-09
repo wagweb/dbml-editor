@@ -1,10 +1,19 @@
-import { addGroups, addRelation, renameColumn, renameTable, type TextEdit } from '@/dbml/edit'
+import {
+  addGroups,
+  addIndex,
+  addRelation,
+  applyEdits,
+  diffEdit,
+  renameColumn,
+  renameTable,
+  type TextEdit,
+} from '@/dbml/edit'
 import { qualifiedId, type GroupModel, type SchemaModel } from '@/dbml/model'
 import { parseDbml } from '@/dbml/parse'
 import { applyEditorEdits, editorText, undoEditor } from '@/editor/bridge'
 import { tableTitle } from '@/layout/geometry'
 import { expectRename, useDiagram } from '@/store/diagram'
-import { useDocuments } from '@/store/documents'
+import { activeDocument } from '@/store/documents'
 import { useUi } from '@/store/ui'
 
 export interface ColumnRef {
@@ -18,8 +27,7 @@ export interface ColumnRef {
  * screen may lag a few hundred milliseconds behind the text.
  */
 function currentSchema(): { source: string; model: SchemaModel } | null {
-  const source =
-    editorText() ?? useDocuments.getState().documents[useDocuments.getState().activeId]?.source
+  const source = editorText() ?? activeDocument()?.source
   if (source === undefined) return null
   const parsed = parseDbml(source)
   if (!parsed.model) {
@@ -103,5 +111,28 @@ export function keepSuggestedGroups(): boolean {
     addGroups(schema.source, schema.model, groups),
     `Added ${groups.length} ${groups.length === 1 ? 'group' : 'groups'} to the code`,
     'The groups could not be written',
+  )
+}
+
+/**
+ * Adds indexes for foreign keys, one or many at once. Each index is computed on the text
+ * the previous one produced, and the whole change lands as one edit, so one undo removes it.
+ */
+export function addIndexesFromDiagram(targets: { tableId: string; columns: string[] }[]): boolean {
+  const schema = currentSchema()
+  if (!schema || targets.length === 0) return false
+  let text = schema.source
+  for (const target of targets) {
+    const model = parseDbml(text).model
+    const edits = model && addIndex(text, model, target.tableId, target.columns)
+    if (!edits) continue
+    text = applyEdits(text, edits)
+  }
+  const edit = diffEdit(schema.source, text)
+  const count = targets.length
+  return commit(
+    edit ? [edit] : null,
+    count === 1 ? 'Added an index' : `Added ${count} indexes`,
+    'The index could not be added',
   )
 }
