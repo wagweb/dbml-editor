@@ -127,3 +127,54 @@ with `(revised by #N)`.
     Node), caches the pnpm store, and publishes `dist/`. `package.json` names the Node range for the same reason; the
     pnpm version is pinned in `amplify.yml` only, because a `packageManager` field makes
     pnpm 12 list its own binaries for every platform in the lockfile.
+36. **2026-11-09: Third UI round, from a two-part review.** A design review (Nielsen 26/40)
+    and a measured audit (contrast, focus order, target sizes, overlap, motion) ran
+    separately; their findings shaped decisions 37 to 45.
+37. **2026-11-09: No examples in the app; a start screen instead.** Chosen by Niklas. With no
+    diagram the app shows a start screen: the product in one picture (DBML on the left,
+    the cards it becomes on the right, the relation draws itself once), and three ways in
+    (new diagram, open a .dbml file, import SQL) in the style of the search palette. DBML
+    or SQL can also be pasted or dropped anywhere. Deleting the last diagram returns here.
+    The example schemas live on as test fixtures in `src/test/schemas.ts`; tests open them
+    through share links.
+38. **2026-11-09: Pasted and dropped text is sorted by its keywords.** `Table`, `Ref` and the
+    other DBML keywords open a diagram directly, named after its `Project`. `CREATE TABLE`
+    opens the SQL import with the statements filled in and the database guessed from the
+    quoting (backticks: MySQL, brackets: SQL Server, otherwise PostgreSQL). Files are
+    handled the same way; a dropped .dbml file stays linked for saving where the browser
+    hands out a handle.
+39. **2026-11-09: Relayouts follow the arrangement on screen.** An automatic layout after an
+    edit or a detail change feeds ELK the tables in their order on screen and reuses the
+    earlier decision which groups to stack (`stacked`, stored per view). Measured on the
+    test schemas: after adding a relation, tables move 8 to 81 px on average instead of up
+    to 500 px. Tidy up still starts from scratch.
+40. **2026-11-09: The camera respects reading range.** A diagram that does not fit at 50%
+    opens at 50% from its top left instead of shrinking to name-only blocks. After a change
+    the camera only moves when the diagram no longer fits. Selecting a table pans just
+    enough to show it and its neighbours beside the details panel, and only after the
+    double-click window, so renaming by double-click lands on the table.
+41. **2026-11-09: The toolbar tells the truth about columns.** Below 50% zoom the detail
+    switch is replaced by "Show columns", which zooms to 75%. The detail labels are short
+    (All, Keys, Names) and no longer wrap; the view menu no longer repeats them.
+42. **2026-11-09: Menu buttons show that their menu is open.** Every button that opens a
+    menu or popover keeps its hover fill while open (`data-[state=open]`), reported by
+    Niklas for the view menu.
+43. **2026-11-09: Canvas editing is findable and hittable.** Relation handles keep their
+    screen size at every zoom (24 px target, 10 px dot) and show as small grey points on
+    every row of the selected table. While a relation is drawn, the other lines stop
+    pulsing and the preview sits above the cards, naming its target next to the pointer.
+44. **2026-11-09: Lists are ranked.** Search matches every word as a substring, names first,
+    so "cust" no longer finds "products"; without a query it lists the six best connected
+    tables. The relation picker lists keys first, same type first, and leaves out the
+    source table. Hints are grouped by kind; foreign keys without an index get an
+    "Add index" fix, one at a time or all at once.
+45. **2026-11-09: Keyboard paths are visible.** A "Skip to diagram" link is the first stop.
+    While the editor has keyboard focus the status bar says how to leave it. Shortcut
+    keycaps in tooltips reach 4.5:1, and "+" renders as a key.
+46. **2026-11-09: A click never zooms.** Reported by Niklas as the workspace flickering on
+    click. Cause: below 50% zoom a click zoomed in to 50%; during the move every label was
+    resized frame by frame, and at the end the whole canvas switched from names to rows at
+    once. Now only jumps from search and from schema hints may zoom; clicks on cards and on
+    relations in the details panel pan at most. Crossing a level of detail is a 160 ms
+    crossfade, and the greying of a selection fades in, so no change of the picture is a
+    hard cut.

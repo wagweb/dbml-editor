@@ -29,6 +29,7 @@ once with `pnpm exec playwright install chromium`.
 - Three levels of detail (all columns, keys, names) and a readable overview when zoomed out
 - Several diagrams, saved in the browser, or open and save `.dbml` files; share one as a
   link without a server
+- Start by pasting or dropping DBML or SQL anywhere
 - Schema hints: missing primary keys, unindexed foreign keys, type mismatches
 - Export as PNG, SVG, SQL or DBML, import from SQL
 - Light and dark theme, usable with the keyboard

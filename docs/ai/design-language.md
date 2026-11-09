@@ -69,6 +69,19 @@ Rules:
 - A column found by search flashes once (`row-flash`, accent soft fill and ring), on the
   card and in the details.
 
+## Start screen
+
+- Shown only when there is no diagram. One picture explains the product: a few lines of
+  DBML in the editor's colours, and the two cards they become, built from the canvas
+  parts. The relation draws itself once (700 ms), the only motion on the screen; with
+  reduced motion it is simply there.
+- The three ways in are rows in the style of the search palette (icon tile, title,
+  description, keycap). The first one has an ink tile; it is the default path.
+- The drafting sheet fades out behind the text (`.start-calm`), so marks never sit under
+  words. The paste and drop hint is hidden on touch screens.
+- Dropping a file anywhere shows a full-window frame with "Drop to open"; the page behind
+  it recedes to 18%.
+
 ## Cards that are not tables
 
 - Enum cards look like small tables with a text tag "enum" in the header and values as
@@ -91,6 +104,20 @@ Rules:
   pointer and turns solid. A click on the handle opens the column picker instead, which is
   also what the details panel offers for keyboard and touch.
 - Every edit made in the diagram reports back with a toast that offers Undo.
+- Relation handles keep their screen size at every zoom (`--screen-scale`, set by the
+  canvas). The selected table shows a small grey point on each row; the hovered row shows
+  the full accent dot. The drag preview is drawn above the cards and names its target next
+  to the pointer.
+
+## Menus and toolbars
+
+- A button that opens a menu or popover keeps its hover fill while the menu is open.
+- The view menu holds diagram options (enum cards, suggested groups, hints, overview map),
+  the theme as a submenu that names the current choice, and the shortcuts. The column
+  detail lives in the toolbar only.
+- Below 50% zoom the toolbar shows "Show columns" instead of the detail switch.
+- Search reads "Search" in the header field and "Search tables, columns and actions"
+  everywhere else; the field's accessible name is the full phrase.
 
 ## Search field and shortcuts
 
@@ -116,7 +143,8 @@ Rules:
 `table-body`, `table-lod`, `column-row`, `column-name`, `relation-handle`,
 `relation-handle-dot`, `inline-edit`, `group-region`, `group-label`, `group-overview`,
 `edge-layer`, `edge`, `edge-hit`, `edge-line`, `edge-marker`, `edge-flow`, `edge-preview`,
-`edge-preview-end`.
+`edge-preview-end`, `edge-preview-label`, `link-preview-layer`, `start-screen`,
+`start-calm`, `start-relation-line`, `start-relation-marker`.
 
 Check a new name against the Tailwind utility list before adding it.
 
@@ -127,7 +155,10 @@ Check a new name against the Tailwind utility list before adding it.
 - Hover shows, click selects. Hovering a table or relation highlights; clicking a table
   selects it, opens the details panel and reveals its code. A click leaves the camera
   alone while most of the table is on screen, so a double-click lands where it started.
-  Shift-click a second table to ask for the path between the two.
+  Shift-click a second table to ask for the path between the two. A click never zooms;
+  only a jump from search or from a hint may zoom in to make columns readable.
+- Levels of detail crossfade (160 ms) and the greying of a selection fades (140 ms). The
+  picture never switches as a whole in one frame.
 - Hints are advice, never alarms: a dotted underline in the text colour in the editor, a
   count in the status bar that opens a list, and a switch to turn them off.
 - Nothing disappears on an error. The last valid diagram stays, with a notice.

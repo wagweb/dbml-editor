@@ -52,6 +52,15 @@ its enum card is an edge like any other, drawn dashed and without cardinality ma
 `refColumnsByTable` ignores it, so the keys view does not show enum columns and the link
 then attaches to the header.
 
+## Relayouts that keep the picture
+
+`runLayout` accepts `previous` (positions on screen) and `stacked` (block pairs stacked last
+time). With them, the model order ELK follows is the order on screen, top to bottom, and
+the stacking decision is reused while all its pairs still exist, so the groups do not swap
+places. The store passes both for automatic layouts after edits, detail changes and
+document opens; "Tidy up" passes neither. ELK's interactive layering was tried and dropped:
+seeding layers from old x positions broke the stacked variants.
+
 ## Auto and manual mode
 
 - Auto (default): every structural change triggers a new layout, tables animate.
@@ -76,7 +85,7 @@ back to simple placement, so the canvas never stays empty.
 
 ## Tuning
 
-Spacing lives in `SHARED_OPTIONS` in `elk.ts`. To judge a change, render the samples:
+Spacing lives in `SHARED_OPTIONS` in `elk.ts`. To judge a change, render the test schemas:
 
 ```sh
 PREVIEW_DIR=/tmp/preview pnpm vitest run src/layout/preview.test.ts

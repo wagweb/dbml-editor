@@ -49,6 +49,25 @@
 
 ### Changed
 
+- No more built-in examples. Without a diagram the app shows a start screen: new diagram,
+  open a .dbml file, import SQL, or paste or drop DBML or SQL anywhere. Deleting the last
+  diagram returns to it. An empty diagram shows a syntax example with "Add this table".
+- Automatic layouts after an edit or a detail change keep the arrangement on screen
+  instead of starting over; the camera only moves when the diagram no longer fits.
+- Large diagrams open at a zoom that shows columns; selecting a table brings it and its
+  neighbours into view beside the details panel.
+- Below 50% zoom the toolbar offers "Show columns" instead of a detail switch that had no
+  effect there. Detail labels are shorter and never wrap.
+- Search finds whole words only ("cust" no longer finds "products"), starts with the best
+  connected tables, and the relation picker lists keys first.
+- Schema hints are grouped by kind, with "Add index" for foreign keys, one or all at once.
+- The view menu is shorter: theme moved into a submenu, the column detail stays in the
+  toolbar. Auto layout and suggested groups no longer use a sparkle icon.
+- Relation handles keep their size on screen at every zoom and show on the selected table;
+  the drag preview names its target.
+- A "Skip to diagram" link, a visible hint for leaving the editor with the keyboard, and
+  keycaps in tooltips that reach 4.5:1.
+
 - Build configuration for AWS Amplify (`amplify.yml`): Node 22 and pnpm 12 are installed
   before the build, the pnpm store is cached, `dist/` is published.
 
@@ -62,5 +81,14 @@
 - Table names no longer outgrow their table when zooming far out. Below 24% zoom the
   group names label their regions instead.
 - A click on a table no longer moves the camera while most of the table is on screen.
+- Buttons that open a menu (view options, export) now stay highlighted while the menu is
+  open, like the diagram menu already did.
+- The "+" shortcut showed an empty keycap.
+- Relation lines vanished for about half a second after every layout change; they now
+  return while the tables settle.
+- Opening a share link in a tab that was already open did nothing.
+- Clicking a table while zoomed out made the whole canvas flicker: the camera zoomed in and
+  every card switched from its name to its rows at once. Clicks no longer zoom, and changes
+  between the levels of detail and the greying of a selection now fade.
 - Group regions no longer lag behind their tables during a drag (a duplicated style rule
   animated them at all times).

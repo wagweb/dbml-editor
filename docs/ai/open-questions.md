@@ -46,3 +46,9 @@ Answer here, then move the answer to `decisions.md`.
 16. **Column renames and partials.** Renaming a column that comes from a `TablePartial` is
     refused, because the change would affect every table that uses the partial. Offer to
     rename it in the partial instead?
+17. **Details panel on narrow screens.** At 1180 px with the code open, the panel takes 320 of
+    780 canvas pixels; a selected table's neighbours can then not all be shown beside it.
+    Dock the panel as a third column, or close the code panel while details are open?
+18. **Starting points.** The examples are gone (decision 37). Would a few templates for
+    common schemas (users and teams, a shop) help on the start screen, or does "New
+    diagram" with two tables cover it?

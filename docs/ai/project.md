@@ -44,6 +44,7 @@ Out of scope for now: accounts, collaboration, server-side storage, database con
 | Schema hints                             | Missing primary keys, unindexed foreign keys, type mismatches, odd names                             |
 | Enums and notes on the canvas            | Enum cards linked to the columns that use them, sticky notes as paper                                |
 | Last valid diagram stays                 | A typo in the code never blanks the canvas                                                           |
+| Start screen                             | Explains the tool in one picture; start new, open a file, import SQL, or just paste or drop          |
 
 ## Not built yet
 

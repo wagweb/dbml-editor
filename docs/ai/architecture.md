@@ -5,17 +5,17 @@ CodeMirror 6. No backend.
 
 ## Modules
 
-| Path                        | Responsibility                                                                                                                                                                                                                                    | Depends on                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `src/dbml/`                 | Parse DBML into the app model (`model.ts`, `parse.ts`), derive what is shown (`derive.ts`), graph questions (`graph.ts`), community detection (`communities.ts`), schema hints (`hints.ts`), text edits (`edit.ts`), samples, lazy SQL conversion | `@dbml/parse`, `@dbml/core` (lazy) |
-| `src/layout/`               | Pure geometry and layout: card metrics, orientation, ELK graph, routes, avoiding router (`avoid.ts`)                                                                                                                                              | `dbml/model`                       |
-| `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui`                                                                                                                                                  | `dbml`, `layout`                   |
-| `src/editor/`               | CodeMirror setup, DBML highlighting, completion adapter, `bridge.ts`                                                                                                                                                                              | `store`, `dbml`                    |
-| `src/canvas/`               | Diagram rendering and pointer or keyboard input, inline renaming, relation dragging (`linkDrag.ts`)                                                                                                                                               | `store`, `layout`                  |
-| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), files (`fileActions.ts`)                                                                                                                           | everything above                   |
-| `src/ui/`                   | Small styled wrappers around Radix primitives, `InlineEdit`                                                                                                                                                                                       | none                               |
-| `src/lib/`                  | Platform helpers, storage adapter, File System Access wrapper (`files.ts`)                                                                                                                                                                        | none                               |
-| `src/export/`, `src/share/` | SVG and PNG export, share link encoding                                                                                                                                                                                                           | `layout`, `store`                  |
+| Path                        | Responsibility                                                                                                                                                                                                                                                         | Depends on                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `src/dbml/`                 | Parse DBML into the app model (`model.ts`, `parse.ts`), derive what is shown (`derive.ts`), graph questions (`graph.ts`), community detection (`communities.ts`), schema hints (`hints.ts`), text edits (`edit.ts`), the starter for new diagrams, lazy SQL conversion | `@dbml/parse`, `@dbml/core` (lazy) |
+| `src/layout/`               | Pure geometry and layout: card metrics, orientation, ELK graph, routes, avoiding router (`avoid.ts`)                                                                                                                                                                   | `dbml/model`                       |
+| `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui`                                                                                                                                                                       | `dbml`, `layout`                   |
+| `src/editor/`               | CodeMirror setup, DBML highlighting, completion adapter, `bridge.ts`                                                                                                                                                                                                   | `store`, `dbml`                    |
+| `src/canvas/`               | Diagram rendering and pointer or keyboard input, inline renaming, relation dragging (`linkDrag.ts`)                                                                                                                                                                    | `store`, `layout`                  |
+| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), files (`fileActions.ts`)                                                                                                                                                | everything above                   |
+| `src/ui/`                   | Small styled wrappers around Radix primitives, `InlineEdit`                                                                                                                                                                                                            | none                               |
+| `src/lib/`                  | Platform helpers, storage adapter, File System Access wrapper (`files.ts`)                                                                                                                                                                                             | none                               |
+| `src/export/`, `src/share/` | SVG and PNG export, share link encoding                                                                                                                                                                                                                                | `layout`, `store`                  |
 
 `src/layout/` and `src/dbml/` hold no React and no DOM access (except `measure.ts` and
 `engine.ts`), which is why they are unit tested in Node.
@@ -85,6 +85,15 @@ are text edits over the declaration, the relations, the table's indexes and `Rec
 A rename made from the diagram announces itself with `expectRename`, so the selection
 follows the table to its new id after the next parse.
 
+## Start screen
+
+`documents.activeId` is null until the first diagram exists and again after the last one
+is deleted; `activeDocument()` is the one way to read the open diagram. `App.tsx` then
+renders `StartScreen` instead of the editor and the canvas, and `closeDocument()` empties
+the diagram store. Pasted text and dropped files go through `src/app/openText.ts`
+(`detectKind`, `guessDialect`, `openText`) and `fileActions.openDropped`. A share link opens
+on load and on `hashchange`, so pasting a link into an open tab works too.
+
 ## Files
 
 `src/lib/files.ts` wraps the File System Access API (`showOpenFilePicker`,
@@ -102,8 +111,11 @@ part of the file; they stay in the browser.
 - Playwright (`e2e/app.spec.ts`, `e2e/features.spec.ts`) covers the user flows on a
   desktop and a mobile project and runs axe in both themes. The file flow runs against a
   stubbed File System Access API.
-- `src/layout/preview.test.ts` is a dev tool: with `PREVIEW_DIR` set it renders the samples
-  to SVG so layout changes can be judged by eye.
+- `src/layout/preview.test.ts` is a dev tool: with `PREVIEW_DIR` set it renders the test
+  schemas to SVG so layout changes can be judged by eye.
+- The app ships no examples. Unit tests and the end-to-end suite share the schemas in
+  `src/test/schemas.ts`; the end-to-end tests open them through a share link
+  (`e2e/fixtures.ts`).
 
 ## Bundle
 
