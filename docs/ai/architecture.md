@@ -5,16 +5,17 @@ CodeMirror 6. No backend.
 
 ## Modules
 
-| Path                        | Responsibility                                                                                   | Depends on                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| `src/dbml/`                 | Parse DBML into the app model (`model.ts`, `parse.ts`), samples, lazy SQL conversion             | `@dbml/parse`, `@dbml/core` (lazy) |
-| `src/layout/`               | Pure geometry and layout: card metrics, orientation, ELK graph, routes, fallback router          | `dbml/model`                       |
-| `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui` | `dbml`, `layout`                   |
-| `src/editor/`               | CodeMirror setup, DBML highlighting, completion adapter, `bridge.ts`                             | `store`, `dbml`                    |
-| `src/canvas/`               | Diagram rendering and pointer or keyboard input                                                  | `store`, `layout`                  |
-| `src/app/`                  | Header, menus, palette, dialogs, app-level actions                                               | everything above                   |
-| `src/ui/`                   | Small styled wrappers around Radix primitives                                                    | none                               |
-| `src/export/`, `src/share/` | SVG and PNG export, share link encoding                                                          | `layout`, `store`                  |
+| Path                        | Responsibility                                                                                                                                                                                                                                    | Depends on                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `src/dbml/`                 | Parse DBML into the app model (`model.ts`, `parse.ts`), derive what is shown (`derive.ts`), graph questions (`graph.ts`), community detection (`communities.ts`), schema hints (`hints.ts`), text edits (`edit.ts`), samples, lazy SQL conversion | `@dbml/parse`, `@dbml/core` (lazy) |
+| `src/layout/`               | Pure geometry and layout: card metrics, orientation, ELK graph, routes, avoiding router (`avoid.ts`)                                                                                                                                              | `dbml/model`                       |
+| `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui`                                                                                                                                                  | `dbml`, `layout`                   |
+| `src/editor/`               | CodeMirror setup, DBML highlighting, completion adapter, `bridge.ts`                                                                                                                                                                              | `store`, `dbml`                    |
+| `src/canvas/`               | Diagram rendering and pointer or keyboard input, inline renaming, relation dragging (`linkDrag.ts`)                                                                                                                                               | `store`, `layout`                  |
+| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), files (`fileActions.ts`)                                                                                                                           | everything above                   |
+| `src/ui/`                   | Small styled wrappers around Radix primitives, `InlineEdit`                                                                                                                                                                                       | none                               |
+| `src/lib/`                  | Platform helpers, storage adapter, File System Access wrapper (`files.ts`)                                                                                                                                                                        | none                               |
+| `src/export/`, `src/share/` | SVG and PNG export, share link encoding                                                                                                                                                                                                           | `layout`, `store`                  |
 
 `src/layout/` and `src/dbml/` hold no React and no DOM access (except `measure.ts` and
 `engine.ts`), which is why they are unit tested in Node.
@@ -25,12 +26,21 @@ CodeMirror 6. No backend.
    `diagram.sourceChanged`.
 2. After 140 ms without typing, `parseDbml` runs. With errors, only `diagnostics` and
    `stale` change and the last valid model stays on screen.
-3. A valid model gets table boxes (`computeTableBox`, text measured on a canvas) and a
+3. The parsed schema is the `fullModel`. What the canvas draws is derived from it by
+   `shownModel` (`derive.ts`): restricted to the open DiagramView, with enums as cards
+   linked to the columns that use them, with sticky notes as cards, and with suggested
+   groups when the schema declares none. Enum and note cards are `TableModel`s with a
+   `kind`; the link from a column to its enum is a `RefModel` of kind `enum`. Code that
+   counts or edits real tables filters with `isTable`.
+4. The shown model gets table boxes (`computeTableBox`, text measured on a canvas) and a
    structure signature. An unchanged signature means only labels changed: no layout run.
-4. Auto mode: `runLayout` (ELK in a web worker) returns positions and routes, tables glide
+5. Auto mode: `runLayout` (ELK in a web worker) returns positions and routes, tables glide
    to their new place. Manual mode: existing positions stay, new tables are placed next to
-   a related table by `placeNewTables`.
-5. Layout results are written back to the document, so a reload does not need a new run.
+   a related table by `placeNewTables`, and `refreshRoutes` reroutes every line that no
+   longer fits or that a table was dropped onto.
+6. Layout results are written back to the document, so a reload does not need a new run.
+   Each DiagramView has its own arrangement (`layout.views[name]`); the whole diagram uses
+   `layout` itself. The open view is stored as `layout.view`.
 
 Every request that replaces the layout bumps a `generation` counter. Async results that
 come back for an older generation are dropped. Two more guards keep concurrent work
@@ -44,11 +54,15 @@ of the older model on screen.
 - `documents`: all diagrams and the active id. Persisted to `localStorage` under
   `keyline:documents` through an adapter that debounces serialising and writing
   (`src/lib/storage.ts`). Other tabs are merged in on the `storage` event.
-- `diagram`: model, boxes, positions, routes, selection, hover, emphasis. Not persisted
-  itself; it writes the layout into the active document.
+- `diagram`: `fullModel`, shown `model`, boxes, positions, routes, open `view`,
+  selection, path target, hover, emphasis (highlighted relations, focus set, path), schema
+  `hints`, search spotlight. Not persisted itself; it writes the layout into the active
+  document. It subscribes to the `ui` view options (enum cards, suggested groups, focus
+  depth) and re-derives the shown model when they change.
 - `viewport`: camera and canvas size. Applied to the DOM imperatively in `Canvas.tsx`, so
   panning does not re-render React.
-- `ui`: theme, panel sizes, open dialog, toast. Preferences persisted under `keyline:ui`.
+- `ui`: theme, panel sizes, view options (enum cards, suggested groups, hints, focus
+  depth), open dialog, palette mode, toast. Preferences persisted under `keyline:ui`.
 
 High-frequency updates (drag, hover, pan) reach components through narrow selectors.
 `TableNode` subscribes to its own position and to precomputed emphasis strings only.
@@ -58,12 +72,36 @@ High-frequency updates (drag, hover, pan) reach components through narrow select
 The canvas calls `revealInEditor(range)` and menus call `replaceEditorText`. The editor
 reports the cursor position, which marks the table under the cursor on the canvas.
 
+## Edits made in the diagram
+
+Renaming a table or column and adding a relation never touch the model directly. They go
+through `src/app/editActions.ts`: the current editor text is parsed afresh (the model on
+screen may lag a few hundred milliseconds), `src/dbml/edit.ts` computes text edits, each
+result is parsed once more and refused if it would not be valid, and the edits are applied
+through `bridge.applyEditorEdits` as one CodeMirror transaction. So every diagram edit sits
+in the editor's undo history, and the toast's Undo is `undoEditor`. Table renames use the
+parser's own `renameTable`, which also updates relations, groups and views; column renames
+are text edits over the declaration, the relations, the table's indexes and `Records`.
+A rename made from the diagram announces itself with `expectRename`, so the selection
+follows the table to its new id after the next parse.
+
+## Files
+
+`src/lib/files.ts` wraps the File System Access API (`showOpenFilePicker`,
+`showSaveFilePicker`, handles in IndexedDB) and falls back to a file input and downloads
+where the API is missing. A document linked to a file carries `file: { name, savedHash }`;
+the dot after the diagram name means the text differs from the file. When the window
+regains focus, the file is re-read if its modification time changed: a diagram without
+edits of its own follows the file, otherwise a message offers to load it. Layouts are not
+part of the file; they stay in the browser.
+
 ## Testing
 
 - Vitest covers `dbml`, `layout`, `share` and the SVG export. Thresholds: 80% statements,
   lines and functions, 70% branches.
-- Playwright (`e2e/app.spec.ts`) covers the user flows on a desktop and a mobile project
-  and runs axe in both themes.
+- Playwright (`e2e/app.spec.ts`, `e2e/features.spec.ts`) covers the user flows on a
+  desktop and a mobile project and runs axe in both themes. The file flow runs against a
+  stubbed File System Access API.
 - `src/layout/preview.test.ts` is a dev tool: with `PREVIEW_DIR` set it renders the samples
   to SVG so layout changes can be judged by eye.
 

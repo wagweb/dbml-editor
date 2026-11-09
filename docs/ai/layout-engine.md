@@ -31,19 +31,34 @@ Everything under `src/layout/`. The engine has one job: make relations easy to f
 4. **Result**. Positions are rounded to whole pixels. Route ends are re-attached to the
    rounded ports (`snapEnds`).
 
-## Stored routes and the fallback router
+## Stored routes and the avoiding router
 
 An ELK route is stored with a signature of its two end points. `computeEdges` (`edges.ts`)
-uses the stored route only while both ends still sit there. After a drag, or when a column
-is added, the signature no longer matches and `routeBetween` (`router.ts`) draws a simple
-elbow instead. This is why hand-moved tables may have lines that pass behind other tables,
-while an automatic layout never does.
+uses the stored route only while both ends still sit there. Without a usable stored route
+(while a table is being dragged, or after the engine failed) `routeAvoiding` (`avoid.ts`)
+draws the line: A* on a sparse grid spanned by the edges of the nearby tables, inflated by
+14 px, trying all four ways to leave and enter (left or right on each end) and charging a
+bend as 36 px of detour. If every way is blocked it falls back to the plain elbow of
+`routeBetween` (`router.ts`).
+
+In manual mode `refreshRoutes` (`edges.ts`) runs after every drop, after new tables were
+placed, when the detail level changes and when a hand-arranged document opens. It keeps
+every stored route whose ends still match and that crosses no table, and replaces the
+rest with avoiding routes, stored with their own signature. Engine lanes survive for
+untouched relations; moved tables and lines a table was dropped onto get new ones.
+
+Enum cards and sticky notes are ordinary nodes for the layout. The link from a column to
+its enum card is an edge like any other, drawn dashed and without cardinality markers;
+`refColumnsByTable` ignores it, so the keys view does not show enum columns and the link
+then attaches to the header.
 
 ## Auto and manual mode
 
 - Auto (default): every structural change triggers a new layout, tables animate.
 - Dragging a table switches to manual: positions are kept, new tables are placed by
-  `incremental.ts`, a single removed plus a single added table counts as a rename.
+  `incremental.ts`, a single removed plus a single added table counts as a rename, and
+  lines are rerouted around tables (`refreshRoutes`).
+- Each DiagramView has its own arrangement and its own auto or manual state.
 - "Tidy up" runs the layout again and switches back to auto. Tidying a hand-made
   arrangement can be undone.
 

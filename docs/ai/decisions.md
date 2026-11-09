@@ -28,7 +28,7 @@ with `(revised by #N)`.
    switches back. Engine routes are reused only while their end points are unchanged;
    otherwise a simple elbow router draws the line.
 10. **2026-11-09: Scroll pans, Ctrl/Cmd + scroll zooms.** Same as Figma and Excalidraw.
-11. **2026-11-09: Detail levels and semantic zoom.** Three levels (all columns, keys,
+11. **2026-11-09: Detail levels and semantic zoom.** (revised by #21) Three levels (all columns, keys,
     names). Below 50% zoom tables show their name large instead of rows.
 12. **2026-11-09: Focus mode greys instead of fading.** Opacity on text failed WCAG
     contrast, so tables outside the focus switch to `--ink-3` and lose their tint.
@@ -62,3 +62,62 @@ with `(revised by #N)`.
     `design-language.md`. The theme setting is a three-way choice (system, light, dark),
     view options are real radio and checkbox menu items, and diagrams in the list show
     when they were last edited so equal names can be told apart.
+21. **2026-11-09: Semantic zoom has three levels.** Near (50% and up): rows. Far (24% to
+    50%): the table name, sized to read as about 11.5 px on screen but never larger than
+    fits the card, with a break after an underscore for long names. Overview (below 24%):
+    grouped tables are plain blocks and the group name is set large across its region;
+    tables without a group keep their fitted name. Before this, names kept growing while
+    zooming out and spilled over neighbouring tables.
+22. **2026-11-09: App icon on a tile.** (revised by #23) The mark sits on a rounded ultramarine square and
+    is reduced to one colour: two solid tables and their relation in white. The earlier
+    version (solid and outlined table, accent line, no background) is gone.
+23. **2026-11-09: App icon, final form.** Chosen by Niklas from eight drafts: two
+    overlapping table frames with a solid overlap, on a tile that is black in the light
+    theme and white in the dark one. No brand colour in the icon.
+24. **2026-11-09: One parsed model, one shown model.** The parser's result stays untouched
+    as `fullModel`; `shownModel` derives what the canvas draws (view, enum cards, note
+    cards, suggested groups). Enum and note cards reuse `TableModel` with a `kind`, so
+    layout, canvas, minimap and export need no second code path. Counting and editing
+    filter with `isTable`.
+25. **2026-11-09: Paths and focus depth.** Shift-click on a second table asks for the
+    shortest chain of relations (BFS over real relations, enum links excluded). Both ends
+    get the selection ring, the chain stays sharp. Focus shows direct neighbours or two
+    steps; enum cards come along but never lead further. Escape clears the path before it
+    closes the details.
+26. **2026-11-09: Views keep their own arrangement.** Each `DiagramView` has its own
+    positions, routes and auto or manual state under `layout.views[name]`; the open view
+    is remembered per document. A view brings only the enums its tables use, and no
+    sticky notes.
+27. **2026-11-09: Suggested groups are proposals.** Louvain over the relation graph, only
+    for schemas with at least eight tables and no `TableGroup`, named after the best
+    connected table. Drawn dashed with a tag; a chip offers to write them into the code
+    or to stop suggesting. Nothing changes in the code until asked.
+28. **2026-11-09: Lines go around tables in manual mode.** An A* router on a sparse grid
+    (`avoid.ts`) replaces the plain elbow as the fallback and reroutes stored routes that a
+    table was dropped onto. Engine routes of untouched relations survive. Measured against
+    40 random arrangements in the unit tests.
+29. **2026-11-09: Edits from the diagram go through the editor.** Rename and new relation
+    compute text edits, are validated by a second parse, and are applied as one CodeMirror
+    transaction. Undo is the editor's undo. Table renames use the parser's `renameTable`;
+    column renames are our own text edits and refuse columns from partials, clashes and
+    unusable names.
+30. **2026-11-09: Relation by dragging, with two alternatives.** A handle on the row edge
+    (hover only, not in the tab order) starts a drag; a click on it, or a button in the
+    details panel, opens a column picker (WCAG 2.5.7). From a key to a plain column the
+    direction is turned round, so the plain column references the key.
+31. **2026-11-09: Files through the File System Access API.** Open and save `.dbml` with
+    handles kept in IndexedDB; a file input and downloads where the API is missing. The
+    document remembers the file's hash: a dot after the name marks unsaved changes, and a
+    changed file on disk is reloaded when the diagram has no edits of its own, otherwise
+    offered. Layouts stay in the browser.
+32. **2026-11-09: Schema hints are advice.** Missing primary key, foreign key without a
+    covering index, type mismatch across a relation, names that break the prevailing
+    style. Shown as info diagnostics (dotted underline, "Hint") only while the code has no
+    errors or warnings, listed from the status bar, switchable off. They never block
+    anything.
+33. **2026-11-09: Pointer capture only once a drag starts.** Capturing on pointerdown made
+    Chromium retarget clicks and double-clicks to the card, so inline renaming never saw
+    them. The capture now starts after the first few pixels of movement.
+34. **2026-11-09: A click does not move the camera while most of the table is on screen.**
+    Keyboard and search still bring the table fully into view; a pointer click only pans
+    when less than half of the table is visible, so a double-click lands where it started.

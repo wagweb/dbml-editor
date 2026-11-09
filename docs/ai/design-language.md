@@ -16,6 +16,14 @@ idea of a drafting sheet.
 - **Colour means membership.** Table headers and group regions take the tone of their
   `TableGroup` (or `headercolor`). No other decorative colour.
 
+## App icon
+
+A rounded square tile with two overlapping table frames; the solid overlap stands for the
+relation, as in a join diagram. Black and white only: the tile uses `--ink`, the drawing
+`--canvas`, so the icon flips with the theme like the primary button. The drawing lives in
+`src/app/Logo.tsx` and, as a copy that follows the system colour scheme, in
+`public/favicon.svg`. It is drawn on a 32 px grid with a corner radius of 7.5.
+
 ## Tokens (`src/index.css`)
 
 | Token                         | Light                           | Dark                            | Use                                                    |
@@ -54,6 +62,47 @@ Rules:
 - A selected table gets a 1.5 px accent ring and a real drop shadow. No coloured glow.
 - The relation pulse runs a few times, then fades. A highlighted line ends up solid.
 - The overview map only shows while part of the diagram is out of view.
+- Zoomed out, a label never outgrows the box it names (`src/layout/label.ts`). Below 24%
+  zoom the group names take over from the table names.
+- A path between two tables uses the same accent as a selection: both ends get the ring,
+  the chain stays sharp, everything else goes grey. The details panel lists the steps.
+- A column found by search flashes once (`row-flash`, accent soft fill and ring), on the
+  card and in the details.
+
+## Cards that are not tables
+
+- Enum cards look like small tables with a text tag "enum" in the header and values as
+  rows without a type. Their link to a column is thin and dashed, with no markers.
+- Sticky notes are paper: `--note` (a warm tint, 4.5:1 for `--ink-2` on it), no header
+  band, the name as a small caption, the text wrapped by measured width. Notes ignore
+  the detail level.
+- Suggested groups are dashed (`outline`, not the inset shadow) and carry a "suggested"
+  tag next to their name. Writing them to the code turns them solid.
+- Chips at the top left of the canvas (view switcher, suggested groups) share the floating
+  surface style of the toolbar and only appear when the schema gives a reason.
+
+## Editing on the canvas
+
+- Double-click a name to rename it, F2 on a focused table. The field (`InlineEdit`) takes
+  the place of the name, sizes itself to the text, Enter and leaving commit, Escape
+  cancels. The details panel offers the same with a pencil button per row.
+- A relation handle (small accent ring) sits on the right edge of a column row and shows
+  on hover only. Drag it onto another column; the preview line snaps to the row under the
+  pointer and turns solid. A click on the handle opens the column picker instead, which is
+  also what the details panel offers for keyboard and touch.
+- Every edit made in the diagram reports back with a toast that offers Undo.
+
+## Search field and shortcuts
+
+- The header search is a button that looks like a field: `--fill` with a hairline, a
+  placeholder in `--ink-3`, and the shortcut as a keycap on the right. It opens the search
+  palette, whose input repeats the same icon and ends in an `Esc` keycap.
+- Shortcuts are always rendered by `src/ui/Kbd.tsx`. A keycap is a 10% tint of the text
+  colour, so it works on any surface. Menus, search rows and tooltips use the `plain`
+  form without a cap.
+- A single line of text in a fixed-height control is centred on its letters, not on its
+  line box: `[text-box:trim-both_cap_alphabetic]` on the label. Without it the Geist
+  metrics leave the text visibly off centre.
 
 ## Typography
 
@@ -64,8 +113,10 @@ Rules:
 ## Custom class names
 
 `canvas-viewport`, `canvas-grid`, `canvas-world`, `table-node`, `table-header`,
-`table-body`, `table-lod`, `column-row`, `column-name`, `group-region`, `group-label`,
-`edge-layer`, `edge`, `edge-hit`, `edge-line`, `edge-marker`, `edge-flow`.
+`table-body`, `table-lod`, `column-row`, `column-name`, `relation-handle`,
+`relation-handle-dot`, `inline-edit`, `group-region`, `group-label`, `group-overview`,
+`edge-layer`, `edge`, `edge-hit`, `edge-line`, `edge-marker`, `edge-flow`, `edge-preview`,
+`edge-preview-end`.
 
 Check a new name against the Tailwind utility list before adding it.
 
@@ -74,7 +125,11 @@ Check a new name against the Tailwind utility list before adding it.
 - Scroll pans, pinch or Ctrl/Cmd + scroll zooms. Drawing tools work this way and a
   trackpad never zooms by accident.
 - Hover shows, click selects. Hovering a table or relation highlights; clicking a table
-  selects it, opens the details panel and reveals its code.
+  selects it, opens the details panel and reveals its code. A click leaves the camera
+  alone while most of the table is on screen, so a double-click lands where it started.
+  Shift-click a second table to ask for the path between the two.
+- Hints are advice, never alarms: a dotted underline in the text colour in the editor, a
+  count in the status bar that opens a list, and a switch to turn them off.
 - Nothing disappears on an error. The last valid diagram stays, with a notice.
 - Destructive actions are undoable (delete diagram, tidy up) instead of asking first.
 - Motion answers an action: tables glide after a layout change, panels fade in. No

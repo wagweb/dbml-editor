@@ -21,9 +21,15 @@ once with `pnpm exec playwright install chromium`.
 
 - DBML editor with highlighting, completion and inline problems
 - Automatic layout that fills the screen, with a manual mode when you drag tables
-- Focus on one table: its relations light up, the rest goes grey
+- Focus on one table: its relations light up, the rest goes grey; shift-click a second
+  table to see the path between them
+- Views from `DiagramView`, suggested groups for schemas without any, enums and sticky
+  notes as cards
+- Rename tables and columns and draw relations on the canvas; the DBML follows
 - Three levels of detail (all columns, keys, names) and a readable overview when zoomed out
-- Several diagrams, saved in the browser; share one as a link without a server
+- Several diagrams, saved in the browser, or open and save `.dbml` files; share one as a
+  link without a server
+- Schema hints: missing primary keys, unindexed foreign keys, type mismatches
 - Export as PNG, SVG, SQL or DBML, import from SQL
 - Light and dark theme, usable with the keyboard
 

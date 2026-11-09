@@ -9,11 +9,15 @@ Answer here, then move the answer to `decisions.md`.
 3. **Hosting.** The guideline asks for an online dev and test environment. Nothing is
    deployed yet. The build is static (`dist/`); where should it run?
 4. **Sentry and SonarQube.** Not set up, since there is no deployment. Needed once hosted?
-5. **Sticky notes.** DBML `Note name { ... }` blocks parse fine but are not drawn.
-6. **Enums on the canvas.** Enum values only show in the details panel. Draw enums as
-   cards with a relation to the columns that use them?
-7. **Other DBML features without a visual.** `Records`, `checks`, `Dep`, `DiagramView`
-   and multi-file projects are accepted by the parser and ignored by the diagram.
+5. **DBML features still without a visual.** `checks`, `Dep` and multi-file projects are
+   accepted by the parser and ignored by the diagram. Sticky notes, enums, `Records` and
+   `DiagramView` are drawn since decision 24.
+6. **Enum cards and the layout.** Enum cards are ordinary layout nodes, so a widely used
+   enum can land far from its users with a long dashed link. Place enum cards next to
+   their first user after the layout instead?
+7. **Creating views and groups from the canvas.** Views come from `DiagramView` in the
+   code and suggested groups can be written to it, but there is no "save the current
+   focus as a view" yet. Wanted?
 8. **Large schemas.** Measured once in headless Chromium with generated schemas: 40
    tables in 4 groups are on screen after about 0.5 s, 120 tables in 8 groups after about
    1.7 s; panning stays at 60 fps in both. Not measured on real schemas or slower machines.
@@ -36,3 +40,9 @@ Answer here, then move the answer to `decisions.md`.
     these get explicit controls?
 14. **Screen reader pass.** axe is clean and the audit was done from code. A manual run
     with NVDA and VoiceOver has not happened yet (the company standard asks for one).
+15. **Files in Firefox and Safari.** Without the File System Access API "Save" downloads
+    the file each time and the diagram cannot follow changes on disk. Good enough, or is
+    a hint in the menu wanted?
+16. **Column renames and partials.** Renaming a column that comes from a `TablePartial` is
+    refused, because the change would affect every table that uses the partial. Offer to
+    rename it in the partial instead?
