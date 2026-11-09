@@ -26,3 +26,4 @@
   choice with a system option; overview map that hides itself when the whole diagram is
   visible.
 - Unit tests (Vitest) and end-to-end tests with an accessibility scan (Playwright, axe).
+- Project docs in `docs/ai` and a `CLAUDE.md` router.
