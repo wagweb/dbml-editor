@@ -21,6 +21,12 @@ describe('share links', () => {
     expect(decodeShare(url.hash)).toEqual(diagram)
   })
 
+  it('carries the view-only flag', () => {
+    const viewOnly = { ...diagram, viewOnly: true }
+    expect(encodeShare(viewOnly)).toMatch(/&v=1$/)
+    expect(decodeShare(`#${encodeShare(viewOnly)}`)).toEqual(viewOnly)
+  })
+
   it('falls back to a default name', () => {
     const decoded = decodeShare(`#${encodeShare({ name: '  ', source: 'Table a { id int }' })}`)
     expect(decoded?.name).toBe('Shared diagram')
