@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Check, ChevronRight } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import type { ComponentProps, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
@@ -7,6 +7,7 @@ import { Kbd } from './Kbd'
 export const Menu = DropdownMenu.Root
 export const MenuTrigger = DropdownMenu.Trigger
 export const MenuRadioGroup = DropdownMenu.RadioGroup
+export const MenuSub = DropdownMenu.Sub
 
 /**
  * The row under the pointer or the arrow keys gets a quiet fill. Keyboard users
@@ -106,7 +107,7 @@ function Trailing({ hint, shortcut }: { hint?: ReactNode; shortcut?: string }) {
   return (
     <>
       {hint && <span className="shrink-0 text-xs text-ink-3">{hint}</span>}
-      {shortcut && <Kbd plain shortcut={shortcut} className="text-ink-3" />}
+      {shortcut && <Kbd plain tone="muted" shortcut={shortcut} />}
     </>
   )
 }
@@ -122,4 +123,49 @@ export function MenuLabel({ className, ...props }: ComponentProps<typeof Dropdow
 
 export function MenuSeparator() {
   return <DropdownMenu.Separator className="-mx-1 my-1 h-px bg-line" />
+}
+
+interface MenuSubTriggerProps extends ComponentProps<typeof DropdownMenu.SubTrigger> {
+  icon?: ReactNode
+  /** The current choice inside the submenu, so it can be read without opening it. */
+  hint?: ReactNode
+}
+
+/** A row that opens a nested menu, for a choice that would otherwise crowd its parent. */
+export function MenuSubTrigger({ icon, hint, className, children, ...props }: MenuSubTriggerProps) {
+  return (
+    <DropdownMenu.SubTrigger
+      className={cn(
+        ITEM,
+        'text-ink data-[state=open]:bg-fill-strong [&_svg]:text-ink-2',
+        className,
+      )}
+      {...props}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {hint && <span className="shrink-0 text-xs text-ink-3">{hint}</span>}
+      <ChevronRight aria-hidden className="-mr-0.5 size-3.5!" />
+    </DropdownMenu.SubTrigger>
+  )
+}
+
+export function MenuSubContent({
+  className,
+  sideOffset = 6,
+  ...props
+}: ComponentProps<typeof DropdownMenu.SubContent>) {
+  return (
+    <DropdownMenu.Portal>
+      <DropdownMenu.SubContent
+        sideOffset={sideOffset}
+        collisionPadding={8}
+        className={cn(
+          'z-50 min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) animate-pop-in rounded-panel bg-surface p-1 shadow-pop',
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenu.Portal>
+  )
 }

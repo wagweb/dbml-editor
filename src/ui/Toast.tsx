@@ -53,7 +53,7 @@ export function Toaster() {
               }}
             >
               {toast.action.label}
-              <Kbd shortcut="mod+Z" className="h-[18px] text-current" />
+              <Kbd shortcut="mod+Z" tone="current" className="h-[18px]" />
             </button>
           )}
           <button

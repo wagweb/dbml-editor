@@ -24,7 +24,7 @@ export function Tooltip({ label, shortcut, side = 'top', children }: TooltipProp
           className="z-50 flex max-w-64 animate-fade-in items-center gap-2 rounded-md bg-ink px-2 py-1 text-xs leading-5 font-medium text-canvas shadow-lg select-none"
         >
           {label}
-          {shortcut && <Kbd plain shortcut={shortcut} className="text-canvas/60" />}
+          {shortcut && <Kbd plain tone="inverse" shortcut={shortcut} />}
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>

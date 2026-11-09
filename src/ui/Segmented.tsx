@@ -33,7 +33,7 @@ export function Segmented<T extends string>({
         <ToggleGroup.Item
           key={option.value}
           value={option.value}
-          className="h-7 rounded-[4px] px-2.5 text-xs font-medium text-ink-2 transition-colors duration-100 select-none hover:text-ink data-[state=on]:bg-surface data-[state=on]:text-ink data-[state=on]:shadow-[0_0_0_1px_var(--line-input)]"
+          className="h-7 rounded-[4px] px-2.5 text-xs font-medium whitespace-nowrap text-ink-2 transition-colors duration-100 select-none hover:text-ink data-[state=on]:bg-surface data-[state=on]:text-ink data-[state=on]:shadow-[0_0_0_1px_var(--line-input)]"
         >
           {option.label}
         </ToggleGroup.Item>

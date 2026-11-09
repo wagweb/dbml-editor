@@ -4,7 +4,10 @@ export const isMac =
 
 /** Keys of a shortcut as shown on this platform, e.g. `mod+K` is `⌘`, `K` on macOS. */
 export function shortcutKeys(shortcut: string): string[] {
-  return shortcut.split('+').map((part) => {
+  // "+" names the plus key itself; "shift++" would be shift and plus.
+  const parts = shortcut === '+' ? ['+'] : shortcut.replace(/\+\+$/, '+plus').split('+')
+  return parts.map((part) => {
+    if (part === 'plus') return '+'
     if (part === 'mod') return isMac ? '⌘' : 'Ctrl'
     if (part === 'shift') return isMac ? '⇧' : 'Shift'
     if (part === 'alt') return isMac ? '⌥' : 'Alt'

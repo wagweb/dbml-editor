@@ -1,4 +1,4 @@
-import { ChevronDown, Layers, Sparkles } from 'lucide-react'
+import { ChevronDown, Group, Layers } from 'lucide-react'
 import { keepSuggestedGroups } from '@/app/editActions'
 import { isTable } from '@/dbml/model'
 import { setView, useDiagram } from '@/store/diagram'
@@ -78,7 +78,7 @@ function SuggestedGroupsMenu({ count }: { count: number }) {
   return (
     <Menu>
       <MenuTrigger className={CHIP}>
-        <Sparkles aria-hidden className="text-ink-2" />
+        <Group aria-hidden className="text-ink-2" />
         <span className="truncate">
           {count} suggested {count === 1 ? 'group' : 'groups'}
         </span>

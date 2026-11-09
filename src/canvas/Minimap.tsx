@@ -7,6 +7,8 @@ import { jumpTo, useViewport } from '@/store/viewport'
 const WIDTH = 184
 const HEIGHT = 116
 const PADDING = 8
+/** Narrower canvases leave no room beside the centred toolbar. */
+const MIN_CANVAS_WIDTH = 960
 
 /** Overview of the whole diagram with the visible area marked. Click or drag to move. */
 export function Minimap() {
@@ -75,7 +77,8 @@ export function Minimap() {
   // With the whole diagram on screen an overview adds nothing and only covers tables.
   const area = useMemo(() => contentBounds(model, boxes, positions), [model, boxes, positions])
   const needed = useViewport((s) => {
-    if (!area || s.width === 0) return false
+    // On a narrow canvas the map would sit on top of the toolbar.
+    if (!area || s.width < MIN_CANVAS_WIDTH) return false
     const slack = 8
     return (
       area.x * s.k + s.x < -slack ||

@@ -4,11 +4,16 @@ import { Tooltip } from './Tooltip'
 
 type Variant = 'primary' | 'secondary' | 'ghost'
 
+/**
+ * `data-[state=open]` is set by the menu or popover a button opens. The button keeps its
+ * hover look for as long as that menu is open, so it is clear where the menu came from.
+ */
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-ink text-canvas hover:bg-ink/85 active:bg-ink/75',
+  primary: 'bg-ink text-canvas hover:bg-ink/85 active:bg-ink/75 data-[state=open]:bg-ink/85',
   secondary:
-    'bg-surface text-ink shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-fill active:bg-fill-strong',
-  ghost: 'text-ink-2 hover:bg-fill hover:text-ink active:bg-fill-strong',
+    'bg-surface text-ink shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-fill active:bg-fill-strong data-[state=open]:bg-fill',
+  ghost:
+    'text-ink-2 hover:bg-fill hover:text-ink active:bg-fill-strong data-[state=open]:bg-fill data-[state=open]:text-ink',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -64,7 +69,7 @@ export function IconButton({
           'inline-flex size-8 shrink-0 items-center justify-center rounded-control transition-colors duration-100 select-none disabled:opacity-40 [&_svg]:size-4',
           active
             ? 'bg-accent-soft text-accent'
-            : 'text-ink-2 hover:bg-fill hover:text-ink active:bg-fill-strong',
+            : 'text-ink-2 hover:bg-fill hover:text-ink active:bg-fill-strong data-[state=open]:bg-fill data-[state=open]:text-ink',
           className,
         )}
         {...props}

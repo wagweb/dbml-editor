@@ -4,11 +4,23 @@ import { shortcutKeys } from '@/lib/platform'
 /** Modifier symbols are drawn small in most fonts; they get a size up to match the letters. */
 const SYMBOLS = new Set(['⌘', '⇧', '⌥', '↵'])
 
+const TONES = {
+  default: 'text-ink-2',
+  muted: 'text-ink-3',
+  inverse: 'text-canvas/80',
+  current: 'text-current',
+} as const
+
 interface KbdProps {
   /** Shortcut in `mod+K` notation, rendered for the current platform. */
   shortcut: string
   /** Text only, for places where a row of keycaps would be too loud (menus, tooltips). */
   plain?: boolean
+  /**
+   * `muted` for secondary rows, `inverse` on ink surfaces (tooltips), `current` to take the
+   * colour of the surrounding text. One prop instead of colour classes that would compete.
+   */
+  tone?: 'default' | 'muted' | 'inverse' | 'current'
   className?: string
 }
 
@@ -16,11 +28,12 @@ interface KbdProps {
  * A keyboard shortcut as a small keycap. The cap is a tint of the text colour, so it works
  * on any surface, including inverted ones.
  */
-export function Kbd({ shortcut, plain, className }: KbdProps) {
+export function Kbd({ shortcut, plain, tone = 'default', className }: KbdProps) {
   return (
     <kbd
       className={cn(
-        'inline-flex shrink-0 items-center justify-center font-sans text-[11px] leading-none font-medium text-ink-2',
+        'inline-flex shrink-0 items-center justify-center font-sans text-[11px] leading-none font-medium',
+        TONES[tone],
         !plain &&
           'h-5 min-w-5 rounded-[5px] bg-[color-mix(in_oklab,currentColor_10%,transparent)] px-1.5',
         className,
