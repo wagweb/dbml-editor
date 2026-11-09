@@ -15,7 +15,15 @@ import {
   StickyNote,
   X,
 } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import { closeDetails, copyJoinQuery, focusTable, nudgeTable, revealTable } from '@/app/actions'
 import { renameColumnFromDiagram, renameTableFromDiagram } from '@/app/editActions'
 import { withinSteps } from '@/dbml/graph'
@@ -51,6 +59,7 @@ export function Inspector() {
     () => model.tables.find((t) => t.id === selectedTableId),
     [model, selectedTableId],
   )
+  const tones = useMemo(() => tableTones(model), [model])
   // The id, not a flag: moving on to another table ends the rename by itself.
   const [renamingId, setRenamingId] = useState<string | null>(null)
 
@@ -63,6 +72,7 @@ export function Inspector() {
 
   if (!table) return null
   const kind = table.kind ?? 'table'
+  const tone = tones.get(table.id)
   const renaming = renamingId === table.id
   const setRenaming = (on: boolean) => setRenamingId(on ? table.id : null)
 
@@ -80,8 +90,16 @@ export function Inspector() {
         minimapOpen ? 'md:max-h-[calc(100%-164px)]' : 'md:max-h-[calc(100%-32px)]',
       )}
     >
-      <header className="flex items-start gap-1 pt-2 pr-1.5 pb-1 pl-4">
-        <div className="min-w-0 flex-1 py-1">
+      {/*
+        The header is the card's header, enlarged: the same group tint, with the group's
+        name above the table's, where the canvas puts it too.
+      */}
+      <header
+        className="details-header flex items-start gap-1 rounded-t-panel pt-2 pr-1.5 pb-2.5 pl-4"
+        style={{ '--tone': tone, '--tone-mix': tone ? '14%' : '0%' } as CSSProperties}
+      >
+        <div className="min-w-0 flex-1 pt-1">
+          <Context table={table} model={model} />
           {renaming ? (
             <InlineEdit
               label="Table name"
@@ -95,9 +113,14 @@ export function Inspector() {
           ) : (
             <h2 className="text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink">
               {tableTitle(table)}
+              {table.alias && (
+                // Written the way DBML writes it: `Table users as U`.
+                <span className="ml-1.5 font-mono text-xs font-normal text-ink-2">
+                  as {table.alias}
+                </span>
+              )}
             </h2>
           )}
-          <Facts table={table} model={model} />
         </div>
         {kind === 'table' && !renaming && !readOnly && (
           <IconButton
@@ -127,12 +150,12 @@ export function Inspector() {
       </header>
 
       {table.note && (
-        <p className="px-4 pb-3 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2">
+        <p className="px-4 pt-3 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2">
           {table.note}
         </p>
       )}
       {kind === 'note' && table.text && (
-        <p className="border-t border-line px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap text-ink">
+        <p className="px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap text-ink">
           {table.text}
         </p>
       )}
@@ -146,34 +169,24 @@ export function Inspector() {
   )
 }
 
-/** Group, alias and kind as small chips under the name. */
-function Facts({ table, model }: { table: TableModel; model: SchemaModel }) {
+/**
+ * Where the card belongs, above its name: the group in the group's colour, as the canvas
+ * labels a group region, or what kind of card it is when it is not a table.
+ */
+function Context({ table, model }: { table: TableModel; model: SchemaModel }) {
   const kind = table.kind ?? 'table'
   const group = model.groups.find((g) => g.id === table.groupId)
-  const tone = useMemo(() => tableTones(model).get(table.id), [model, table.id])
-  const chips: ReactNode[] = []
-  if (kind !== 'table') chips.push(<Chip key="kind">{kind}</Chip>)
-  if (group) {
-    chips.push(
-      <Chip key="group" dot={tone}>
-        {group.name}
-        {group.suggested && <span className="text-ink-3">, suggested</span>}
-      </Chip>,
+  if (kind !== 'table') {
+    return (
+      <p className="mb-0.5 text-xs font-medium text-ink-2">{kind === 'enum' ? 'Enum' : 'Note'}</p>
     )
   }
-  if (table.alias) chips.push(<Chip key="alias">alias {table.alias}</Chip>)
-  if (chips.length === 0) return null
-  return <div className="mt-1.5 flex flex-wrap gap-1.5">{chips}</div>
-}
-
-function Chip({ dot, children }: { dot?: string; children: ReactNode }) {
+  if (!group) return null
   return (
-    <span className="inline-flex h-5 max-w-full items-center gap-1.5 rounded-full bg-fill px-2 text-xs text-ink-2">
-      {dot && (
-        <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
-      )}
-      <span className="truncate">{children}</span>
-    </span>
+    <p className="details-context mb-0.5 truncate text-xs font-semibold">
+      {group.name}
+      {group.suggested && <span className="font-normal text-ink-2"> suggested group</span>}
+    </p>
   )
 }
 
@@ -191,7 +204,7 @@ function PathCard({ table }: { table: TableModel }) {
   }
 
   return (
-    <section aria-labelledby={headingId} className="mx-3 mb-3 rounded-lg bg-fill p-3">
+    <section aria-labelledby={headingId} className="mx-3 mt-3 rounded-lg bg-fill p-3">
       <div className="flex items-center gap-1">
         <h3 id={headingId} className="min-w-0 flex-1 truncate text-xs font-medium text-ink-2">
           Path to {tableTitle(target)}
@@ -280,7 +293,7 @@ function TableTabs({ table }: { table: TableModel }) {
       onValueChange={(next) => useUi.getState().setDetailsTab(next as DetailsTab)}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="px-3 pb-2">
+      <div className="px-3 pt-3 pb-2">
         <TabList label="Table details" value={tab} tabs={tabs} className="w-full" />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-line">

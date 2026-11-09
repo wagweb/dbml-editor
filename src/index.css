@@ -338,6 +338,21 @@
     height 340ms var(--ease-out);
 }
 
+/* The details panel's header repeats the selected card's header: same tint, same label. */
+.details-header {
+  background: color-mix(in oklab, var(--tone, transparent) var(--tone-mix, 0%), var(--fill));
+}
+
+.details-header button:hover,
+.details-header button[data-state='open'] {
+  /* Relative to the tint, so a hover still reads on a coloured header. */
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+}
+
+.details-context {
+  color: color-mix(in oklab, var(--tone, var(--ink-2)) 55%, var(--ink));
+}
+
 .table-header {
   background: color-mix(in oklab, var(--tone, transparent) var(--tone-mix, 0%), var(--fill));
   border-bottom: 1px solid var(--line);
