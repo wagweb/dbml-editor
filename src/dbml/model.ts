@@ -28,13 +28,20 @@ export interface IndexModel {
   note?: string
 }
 
+/** What a card on the canvas stands for. Enums and notes are drawn like small tables. */
+export type CardKind = 'table' | 'enum' | 'note'
+
 export interface TableModel {
-  /** `schema.name`, or just `name` in the default schema. */
+  /** `schema.name`, or just `name` in the default schema. Enum and note cards are prefixed. */
   id: string
+  /** Absent for real tables. */
+  kind?: CardKind
   name: string
   schema: string | null
   alias: string | null
   note?: string
+  /** Body text of a note card. */
+  text?: string
   color?: string
   columns: ColumnModel[]
   indexes: IndexModel[]
@@ -50,7 +57,8 @@ export interface RefEndpoint {
   cardinality: Cardinality
 }
 
-export type RefKind = 'many-to-one' | 'one-to-one' | 'many-to-many'
+/** `enum` links a column to the card of its enum type; it is not a foreign key. */
+export type RefKind = 'many-to-one' | 'one-to-one' | 'many-to-many' | 'enum'
 
 export interface RefModel {
   id: string
@@ -85,6 +93,31 @@ export interface GroupModel {
   tableIds: string[]
   color?: string
   note?: string
+  /** Detected by the app, not written in the DBML. */
+  suggested?: boolean
+  range: SourceRange
+}
+
+export interface StickyNoteModel {
+  name: string
+  content: string
+  color?: string
+  range: SourceRange
+}
+
+export type RecordValue = string | number | boolean | null
+
+/** Sample rows declared with `Records`. */
+export interface RecordsModel {
+  tableId: string
+  columns: string[]
+  rows: RecordValue[][]
+}
+
+/** A named `DiagramView`: the tables it shows. */
+export interface ViewModel {
+  name: string
+  tableIds: string[]
   range: SourceRange
 }
 
@@ -100,9 +133,20 @@ export interface SchemaModel {
   refs: RefModel[]
   enums: EnumModel[]
   groups: GroupModel[]
+  notes: StickyNoteModel[]
+  records: RecordsModel[]
+  views: ViewModel[]
 }
 
-export const EMPTY_MODEL: SchemaModel = { tables: [], refs: [], enums: [], groups: [] }
+export const EMPTY_MODEL: SchemaModel = {
+  tables: [],
+  refs: [],
+  enums: [],
+  groups: [],
+  notes: [],
+  records: [],
+  views: [],
+}
 
 export const DEFAULT_SCHEMA = 'public'
 
@@ -112,8 +156,13 @@ export function qualifiedId(schema: string | null | undefined, name: string): st
   return schema && schema !== DEFAULT_SCHEMA ? `${part(schema)}.${part(name)}` : part(name)
 }
 
+export function isTable(card: Pick<TableModel, 'kind'>): boolean {
+  return card.kind === undefined || card.kind === 'table'
+}
+
 export function describeRefKind(kind: RefKind): string {
   if (kind === 'one-to-one') return 'one to one'
   if (kind === 'many-to-many') return 'many to many'
+  if (kind === 'enum') return 'uses enum'
   return 'many to one'
 }

@@ -1,10 +1,12 @@
 import {
+  addDoubleQuoteIfNeeded,
   Compiler,
   DEFAULT_ENTRY,
   getMultiplicities,
   MemoryProjectLayout,
   type Column,
   type Database,
+  type DiagramView,
   type Index,
   type Ref,
   type Table,
@@ -19,12 +21,16 @@ import {
   type GroupModel,
   type IndexModel,
   type ProjectModel,
+  type RecordsModel,
+  type RecordValue,
   type RefEndpoint,
   type RefKind,
   type RefModel,
   type SchemaModel,
   type SourceRange,
+  type StickyNoteModel,
   type TableModel,
+  type ViewModel,
 } from './model'
 
 export interface Diagnostic {
@@ -139,6 +145,34 @@ export function completeDbml(source: string, offset: number): DbmlCompletion[] {
   }
 }
 
+/**
+ * Renames a table and everything that refers to it (relations, groups, views) with the
+ * parser's own refactoring. Returns the new source, or null if the parser declines.
+ */
+export function renameTableInSource(
+  source: string,
+  table: { name: string; schema: string | null },
+  newName: string,
+): string | null {
+  setSource(source)
+  const schema = table.schema ? { schema: table.schema } : {}
+  try {
+    const result = compiler.renameTable(
+      DEFAULT_ENTRY,
+      { table: table.name, ...schema },
+      { table: newName, ...schema },
+    )
+    return [...result.values()][0] ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Wraps a name in double quotes when DBML needs them. */
+export function quoteName(name: string): string {
+  return addDoubleQuoteIfNeeded(name)
+}
+
 function toModel(raw: Readonly<Database>): SchemaModel {
   const partials = new Map(raw.tablePartials.map((p) => [p.name, p]))
   const enums = raw.enums.map(toEnum)
@@ -180,8 +214,62 @@ function toModel(raw: Readonly<Database>): SchemaModel {
     }
   }
 
+  const notes = raw.notes.map((n): StickyNoteModel => ({
+    name: n.name,
+    content: n.content,
+    ...optional('color', normalizeColor(n.color)),
+    range: toRange(n.token),
+  }))
+  const records = raw.records
+    .map((r): RecordsModel => ({
+      tableId: qualifiedId(r.schemaName, r.tableName),
+      columns: [...r.columns],
+      rows: r.values.map((row) => row.map((cell) => toRecordValue(cell.value))),
+    }))
+    .filter((r) => tableById.has(r.tableId))
+  const views = raw.diagramViews.map((view): ViewModel => ({
+    name: view.name,
+    tableIds: viewTables(view.visibleEntities, tables, groups),
+    range: toRange(view.token),
+  }))
+
   const project = toProject(raw.project)
-  return { ...(project ? { project } : {}), tables, refs, enums, groups }
+  return { ...(project ? { project } : {}), tables, refs, enums, groups, notes, records, views }
+}
+
+function toRecordValue(value: unknown): RecordValue {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value
+  }
+  return JSON.stringify(value)
+}
+
+/**
+ * Tables a DiagramView shows. A view names tables, groups or schemas; whatever is named is
+ * shown. A section written with `*` means everything, and a view without any section shows
+ * nothing.
+ */
+function viewTables(
+  filter: DiagramView['visibleEntities'],
+  tables: TableModel[],
+  groups: GroupModel[],
+): string[] {
+  const named = new Set<string>()
+  for (const table of filter.tables ?? []) named.add(qualifiedId(table.schemaName, table.name))
+  for (const group of filter.tableGroups ?? []) {
+    for (const id of groups.find((g) => g.name === group.name)?.tableIds ?? []) named.add(id)
+  }
+  for (const schema of filter.schemas ?? []) {
+    const wanted = schema.name === 'public' ? null : schema.name
+    for (const table of tables) if (table.schema === wanted) named.add(table.id)
+  }
+  if (named.size > 0) return tables.filter((t) => named.has(t.id)).map((t) => t.id)
+
+  const everything = [filter.tables, filter.tableGroups, filter.schemas].some(
+    (section) => section !== null && section.length === 0,
+  )
+  return everything ? tables.map((t) => t.id) : []
 }
 
 function toProject(project: Database['project']): ProjectModel | undefined {

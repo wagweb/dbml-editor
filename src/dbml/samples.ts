@@ -140,6 +140,16 @@ TableGroup Sales {
   payments
   shipments
 }
+
+Note conventions {
+  'Money is stored in cents as integers. Timestamps are UTC.'
+}
+
+Records countries(code, name) {
+  'DE', 'Germany'
+  'FR', 'France'
+  'US', 'United States'
+}
 `
 
 const BLOG = `// A small publishing schema.
@@ -369,6 +379,27 @@ TableGroup Integrations {
   audit_events
   webhooks
   webhook_deliveries
+}
+
+// Views show a part of the schema. Switch between them above the diagram.
+DiagramView Billing {
+  Tables {
+    workspaces
+    users
+  }
+  TableGroups {
+    Billing
+  }
+}
+
+DiagramView Work {
+  Tables {
+    workspaces
+    users
+  }
+  TableGroups {
+    Work
+  }
 }
 `
 
