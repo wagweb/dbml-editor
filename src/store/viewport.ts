@@ -52,7 +52,7 @@ export function insetsFor(detailsOpen: boolean): Insets {
   if (!detailsOpen) return DEFAULT_INSETS
   return window.matchMedia('(max-width: 767px)').matches
     ? { top: 24, right: 24, bottom: Math.round(window.innerHeight * 0.5), left: 24 }
-    : { ...DEFAULT_INSETS, right: 368 }
+    : { ...DEFAULT_INSETS, right: 400 }
 }
 
 /**
