@@ -245,19 +245,18 @@
   cursor: default;
   transition:
     box-shadow 120ms ease-out,
-    background-color 160ms ease-out,
-    opacity 160ms ease-out;
+    background-color 160ms ease-out;
 }
 
 /*
- * Selecting a table greys out the rest. Text and fills fade instead of switching, so a
- * click changes the picture calmly rather than all at once.
+ * Selecting a table greys out the rest. The header fill and the outline fade; the text
+ * switches at once, because fading hundreds of rows cost whole frames on large schemas.
+ *
+ * No opacity transitions or animations inside the canvas: Chrome gives every element
+ * with a running opacity animation its own GPU layer, and everything painted above it
+ * has to follow. A click that started a dozen of them doubled the layer area and showed
+ * a frame without content, a flash of the browser's background.
  */
-.table-node :is(h2, li, span, p) {
-  transition:
-    color 140ms ease-out,
-    background-color 140ms ease-out;
-}
 
 .table-node:focus-visible {
   outline-offset: 3px;
@@ -315,8 +314,7 @@
   transition:
     transform 340ms var(--ease-out),
     box-shadow 120ms ease-out,
-    background-color 160ms ease-out,
-    opacity 160ms ease-out;
+    background-color 160ms ease-out;
 }
 
 .canvas-world[data-animating='true'] .group-region {
@@ -330,9 +328,7 @@
   background: color-mix(in oklab, var(--tone, transparent) var(--tone-mix, 0%), var(--fill));
   border-bottom: 1px solid var(--line);
   border-radius: var(--radius-card) var(--radius-card) 0 0;
-  transition:
-    opacity 160ms ease-out,
-    background-color 140ms ease-out;
+  transition: background-color 140ms ease-out;
 }
 
 .table-node[data-detail='names'] .table-header {
@@ -412,8 +408,7 @@
   scale: var(--screen-scale, 1);
   border-radius: 50%;
   cursor: crosshair;
-  opacity: 0;
-  transition: opacity 100ms ease-out;
+  visibility: hidden;
   touch-action: none;
 }
 
@@ -432,7 +427,7 @@
 .column-row:hover .relation-handle,
 .table-node[data-selected='true'] .relation-handle,
 .column-row[data-link-source='true'] .relation-handle {
-  opacity: 1;
+  visibility: visible;
 }
 
 .table-node[data-selected='true']
@@ -461,21 +456,13 @@
 /*
  * Three levels of detail. Near: rows. Far: the table name, as large as fits the card.
  * Overview: grouped tables are plain blocks and the group name is set across its region.
- * Crossing a level is a short crossfade; a hard switch made the whole canvas blink.
+ * A level switches at once: fading every card would give each of them a GPU layer.
  */
 .table-lod,
 .group-overview {
   display: flex;
   visibility: hidden;
-  opacity: 0;
   pointer-events: none;
-  transition:
-    opacity 160ms ease-out,
-    visibility 0s linear 160ms;
-}
-
-.table-body {
-  transition: opacity 160ms ease-out;
 }
 
 /* Hidden by opacity, so the content stays available to assistive technology. */
@@ -491,18 +478,10 @@
 .canvas-world:is([data-lod='far'], [data-lod='overview']) .table-lod,
 .canvas-world[data-lod='overview'] .group-overview {
   visibility: visible;
-  opacity: 1;
-  transition:
-    opacity 160ms ease-out,
-    visibility 0s;
 }
 
 .canvas-world[data-lod='overview'] .table-node[data-grouped='true'] .table-lod {
   visibility: hidden;
-  opacity: 0;
-  transition:
-    opacity 160ms ease-out,
-    visibility 0s linear 160ms;
 }
 
 .canvas-world[data-lod='overview'] .group-label {
@@ -537,7 +516,6 @@
 .group-label {
   color: color-mix(in oklab, var(--tone) 55%, var(--ink));
   cursor: grab;
-  transition: opacity 160ms ease-out;
 }
 
 /* A suggested group is a proposal: dashed, until it is written into the code. */
@@ -553,26 +531,25 @@
   left: 0;
   overflow: visible;
   pointer-events: none;
-  transition: opacity 180ms ease-out;
 }
 
 /*
  * While tables glide to a new place the lines would point at the old one, so they step
- * aside and come back as the glide settles. Most of the glide is done after 60% of it.
+ * aside and come back as the glide settles. Visibility, not opacity: fading the whole
+ * layer would lift it and every card above it onto GPU layers for the duration.
  */
 .canvas-world[data-animating='true'] .edge-layer {
   animation: edges-return 360ms linear;
 }
 
 @keyframes edges-return {
-  0% {
-    opacity: 0;
-  }
+  0%,
   55% {
-    opacity: 0;
+    visibility: hidden;
   }
+  56%,
   100% {
-    opacity: 1;
+    visibility: visible;
   }
 }
 
@@ -607,15 +584,16 @@
   stroke-width: 1.25;
   stroke-linecap: round;
   stroke-linejoin: round;
+  /* stroke-opacity, not opacity: it fades without a GPU layer per line. */
   transition:
     stroke 100ms ease-out,
-    opacity 160ms ease-out;
+    stroke-opacity 160ms ease-out;
   vector-effect: non-scaling-stroke;
 }
 
 .edge[data-dimmed='true'] .edge-line,
 .edge[data-dimmed='true'] .edge-marker {
-  opacity: 0.22;
+  stroke-opacity: 0.22;
 }
 
 .edge[data-active='true'] .edge-line,
@@ -674,12 +652,12 @@
   stroke-width: 1.75;
   stroke-linecap: round;
   stroke-dasharray: 1.5 12.5;
-  opacity: 0;
+  stroke-opacity: 0;
   vector-effect: non-scaling-stroke;
 }
 
 .edge[data-active='true'] .edge-flow {
-  opacity: 0.9;
+  stroke-opacity: 0.9;
   /* A few runs show the direction, then the gaps fade and the line is solid again. */
   animation:
     edge-flow 700ms linear 5,
@@ -694,7 +672,7 @@
 
 @keyframes edge-flow-out {
   to {
-    opacity: 0;
+    stroke-opacity: 0;
   }
 }
 
