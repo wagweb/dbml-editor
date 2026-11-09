@@ -20,8 +20,11 @@ test.describe('desktop', () => {
   test.skip(({ isMobile }) => isMobile)
 
   test('draws the example schema on first visit', async ({ page }) => {
-    await expect(page.locator('article[data-table-id]')).toHaveCount(11)
-    await expect(page.locator('.edge')).toHaveCount(13)
+    // 11 tables, two enums and one sticky note; 13 relations plus two enum links.
+    await expect(page.locator('article[data-kind="table"]')).toHaveCount(11)
+    await expect(page.locator('article[data-kind="enum"]')).toHaveCount(2)
+    await expect(page.locator('article[data-kind="note"]')).toHaveCount(1)
+    await expect(page.locator('.edge:not(.edge-preview)')).toHaveCount(15)
     await expect(page.getByText('11 tables, 13 relations')).toBeVisible()
     await expect(page).toHaveTitle(/Storefront/)
   })
@@ -32,7 +35,7 @@ test.describe('desktop', () => {
       '\nTable coupons {\n  id uuid [pk]\n  order_id uuid [ref: > orders.id]\n}\n',
     )
     await expect(table(page, 'coupons')).toBeVisible()
-    await expect(page.locator('.edge')).toHaveCount(14)
+    await expect(page.locator('.edge:not(.edge-preview)')).toHaveCount(16)
     await expect(page.getByText('12 tables, 14 relations')).toBeVisible()
   })
 
@@ -42,7 +45,7 @@ test.describe('desktop', () => {
     await appendCode(page, '\nRef: orders.customer_id > nowhere.id\n')
     await expect(page.getByText('Showing the last version without errors')).toBeVisible()
     await expect(page.getByRole('button', { name: /1 error/ })).toBeVisible()
-    await expect(page.locator('article[data-table-id]')).toHaveCount(11)
+    await expect(page.locator('article[data-kind="table"]')).toHaveCount(11)
 
     await page.getByRole('button', { name: 'Go to problem' }).click()
     await expect(page.locator('.cm-content')).toBeFocused()
@@ -53,7 +56,8 @@ test.describe('desktop', () => {
     const details = page.getByRole('complementary', { name: 'Details of table orders' })
     await expect(details).toBeVisible()
     await expect(details.getByRole('button', { name: /^shipping_address_id uuid/ })).toBeVisible()
-    await expect(page.locator('.edge[data-active="true"]')).toHaveCount(5)
+    // Five relations plus the link from status to its enum.
+    await expect(page.locator('.edge[data-active="true"]')).toHaveCount(6)
     await expect(table(page, 'categories')).toHaveAttribute('data-dimmed', 'true')
     await expect(table(page, 'customers')).toHaveAttribute('data-dimmed', 'false')
 
@@ -69,7 +73,7 @@ test.describe('desktop', () => {
 
   test('finds a table through search', async ({ page }) => {
     await page.keyboard.press(`${mod}+k`)
-    await page.getByPlaceholder('Search tables and actions').fill('review')
+    await page.getByPlaceholder('Search tables, columns and actions').fill('review')
     await page.keyboard.press('Enter')
     await expect(
       page.getByRole('complementary', { name: 'Details of table reviews' }),
@@ -114,7 +118,7 @@ test.describe('desktop', () => {
     const details = page.getByRole('complementary', { name: 'Details of table countries' })
     await expect(details).toBeFocused()
     const x = (await table(page, 'countries').boundingBox())!.x
-    await details.getByRole('button', { name: 'Move table right' }).click()
+    await details.getByRole('button', { name: 'Move right' }).click()
     await expect
       .poll(async () => (await table(page, 'countries').boundingBox())!.x)
       .toBeGreaterThan(x)
@@ -231,6 +235,47 @@ test.describe('desktop', () => {
     await expect(map).toHaveAttribute('data-visible', 'true')
     await page.getByRole('button', { name: 'Fit diagram to screen' }).click()
     await expect(map).toHaveAttribute('data-visible', 'false')
+  })
+
+  test('keeps zoomed-out names inside their table and labels groups in the overview', async ({
+    page,
+  }) => {
+    const world = page.locator('.canvas-world')
+    const zoomOut = page.getByRole('button', { name: 'Zoom out' })
+    /** Labels whose text reaches outside the table they belong to. */
+    const spilling = () =>
+      page.evaluate(
+        () =>
+          [...document.querySelectorAll('article[data-table-id]')].filter((table) => {
+            const label = table.querySelector('.table-lod')
+            if (!label || getComputedStyle(label).display === 'none') return false
+            const box = table.getBoundingClientRect()
+            return [...label.children].some((line) => {
+              const text = line.getBoundingClientRect()
+              return text.left < box.left - 0.5 || text.right > box.right + 0.5
+            })
+          }).length,
+      )
+
+    /** Zooms out step by step; each step is animated, so it waits before the next one. */
+    const zoomOutUntil = async (level: string) => {
+      for (let step = 0; step < 14; step += 1) {
+        if ((await world.getAttribute('data-lod')) === level) return
+        await zoomOut.click()
+        await page.waitForTimeout(400)
+      }
+    }
+
+    await zoomOutUntil('far')
+    await expect(world).toHaveAttribute('data-lod', 'far')
+    await expect(table(page, 'product_images').locator('.table-lod')).toBeVisible()
+    expect(await spilling()).toBe(0)
+
+    await zoomOutUntil('overview')
+    await expect(world).toHaveAttribute('data-lod', 'overview')
+    expect(await spilling()).toBe(0)
+    await expect(page.locator('.group-overview', { hasText: 'Catalog' })).toBeVisible()
+    await expect(table(page, 'product_images').locator('.table-lod')).toBeHidden()
   })
 
   test('can be operated from the keyboard', async ({ page }) => {
