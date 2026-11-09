@@ -10,7 +10,7 @@ import {
   type ImportDialect,
 } from '@/dbml/sql'
 import { copyText, downloadText, fileSlug } from '@/export/download'
-import { useDocuments } from '@/store/documents'
+import { useDocuments, activeDocument } from '@/store/documents'
 import { useUi } from '@/store/ui'
 import { Button } from '@/ui/Button'
 import { Dialog } from '@/ui/Dialog'
@@ -44,8 +44,7 @@ function SqlExport() {
 
   useEffect(() => {
     let cancelled = false
-    const { documents, activeId } = useDocuments.getState()
-    exportSql(documents[activeId]?.source ?? '', dialect)
+    exportSql(activeDocument()?.source ?? '', dialect)
       .then((sql) => !cancelled && setResult({ status: 'done', sql, dialect }))
       .catch(
         (error: unknown) =>
@@ -66,8 +65,7 @@ function SqlExport() {
     setTimeout(() => setCopied(false), 1600)
   }
   const download = () => {
-    const { documents, activeId } = useDocuments.getState()
-    if (sql !== null) downloadText(`${fileSlug(documents[activeId]?.name ?? 'diagram')}.sql`, sql)
+    if (sql !== null) downloadText(`${fileSlug(activeDocument()?.name ?? 'diagram')}.sql`, sql)
   }
 
   return (
@@ -136,8 +134,10 @@ export function SqlImportDialog() {
 }
 
 function SqlImport({ onDone }: { onDone: () => void }) {
-  const [dialect, setDialect] = useState<ImportDialect>('postgres')
-  const [sql, setSql] = useState('')
+  // SQL that was pasted or dropped arrives as a draft with a guessed database.
+  const draft = useUi.getState().importDraft
+  const [dialect, setDialect] = useState<ImportDialect>(draft?.dialect ?? 'postgres')
+  const [sql, setSql] = useState(draft?.sql ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -146,7 +146,7 @@ function SqlImport({ onDone }: { onDone: () => void }) {
     setError(null)
     try {
       const source = await importSql(sql, dialect)
-      useDocuments.getState().create({ name: 'Imported schema', source })
+      useDocuments.getState().create({ name: draft?.name ?? 'Imported schema', source })
       onDone()
     } catch (caught) {
       setError(describeSqlError(caught))

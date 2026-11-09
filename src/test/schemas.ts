@@ -1,3 +1,4 @@
+/** Example schemas used by the unit and end-to-end tests. The app itself ships none. */
 export interface Sample {
   id: string
   name: string
@@ -418,15 +419,3 @@ export const SAMPLES: Sample[] = [
     source: SAAS,
   },
 ]
-
-export const STARTER_SOURCE = `Table users {
-  id int [pk, increment]
-  email varchar [not null, unique]
-}
-
-Table posts {
-  id int [pk, increment]
-  author_id int [not null, ref: > users.id]
-  title varchar [not null]
-}
-`

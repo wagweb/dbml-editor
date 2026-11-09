@@ -22,6 +22,8 @@ function importSharedDiagram(): void {
 }
 
 importSharedDiagram()
+// A share link pasted into the address bar of an open tab only changes the fragment.
+window.addEventListener('hashchange', importSharedDiagram)
 trackInputModality()
 
 createRoot(document.getElementById('root')!).render(

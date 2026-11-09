@@ -2,13 +2,8 @@ import { copyText, downloadBlob, downloadText, fileSlug } from '@/export/downloa
 import { diagramPng, diagramSvg } from '@/export/image'
 import { shareUrl } from '@/share/encode'
 import { useDiagram } from '@/store/diagram'
-import { useDocuments, type DiagramDocument } from '@/store/documents'
+import { activeDocument } from '@/store/documents'
 import { useUi } from '@/store/ui'
-
-function activeDocument(): DiagramDocument | undefined {
-  const { documents, activeId } = useDocuments.getState()
-  return documents[activeId]
-}
 
 function hasDiagram(): boolean {
   if (useDiagram.getState().model.tables.length > 0) return true

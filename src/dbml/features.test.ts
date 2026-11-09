@@ -5,7 +5,7 @@ import { shortestPath, withinSteps } from './graph'
 import { schemaHints } from './hints'
 import { isTable } from './model'
 import { parseDbml } from './parse'
-import { SAMPLES } from './samples'
+import { SAMPLES } from '@/test/schemas'
 
 function parse(source: string) {
   const result = parseDbml(source)

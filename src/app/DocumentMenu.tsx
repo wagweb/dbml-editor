@@ -2,7 +2,6 @@ import {
   ChevronsUpDown,
   Copy,
   FileInput,
-  FileText,
   FolderOpen,
   Pencil,
   Plus,
@@ -11,7 +10,6 @@ import {
   Unlink,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { SAMPLES } from '@/dbml/samples'
 import { supportsFileHandles } from '@/lib/files'
 import { timeAgo } from '@/lib/time'
 import { sortedDocuments, useDocuments } from '@/store/documents'
@@ -26,7 +24,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '@/ui/Menu'
-import { newDiagram, openSample } from './actions'
+import { newDiagram } from './actions'
 import { hasUnsavedChanges, openFile, saveFile, unlinkFile } from './fileActions'
 
 function deleteWithUndo(id: string): void {
@@ -43,10 +41,10 @@ function deleteWithUndo(id: string): void {
 /** Name of the open diagram; opens the list of saved diagrams. */
 export function DocumentMenu() {
   const activeId = useDocuments((s) => s.activeId)
-  const activeName = useDocuments((s) => s.documents[s.activeId]?.name)
-  const file = useDocuments((s) => s.documents[s.activeId]?.file)
+  const activeName = useDocuments((s) => (s.activeId ? s.documents[s.activeId]?.name : undefined))
+  const file = useDocuments((s) => (s.activeId ? s.documents[s.activeId]?.file : undefined))
   const unsaved = useDocuments((s) => {
-    const doc = s.documents[s.activeId]
+    const doc = s.activeId ? s.documents[s.activeId] : undefined
     return doc ? hasUnsavedChanges(doc) : false
   })
   const [renaming, setRenaming] = useState(false)
@@ -61,7 +59,7 @@ export function DocumentMenu() {
     }
   }, [renaming])
 
-  if (activeName === undefined) return null
+  if (activeName === undefined || activeId === null) return null
 
   if (renaming) {
     return (
@@ -124,7 +122,7 @@ export function DocumentMenu() {
         )}
         {file && (
           <MenuItem icon={<Unlink />} onSelect={unlinkFile}>
-            Detach from file
+            Stop saving to {file.name}
           </MenuItem>
         )}
         <MenuSeparator />
@@ -137,13 +135,6 @@ export function DocumentMenu() {
         <MenuItem icon={<Trash2 />} danger onSelect={() => deleteWithUndo(activeId)}>
           Delete
         </MenuItem>
-        <MenuSeparator />
-        <MenuLabel>Examples</MenuLabel>
-        {SAMPLES.map((sample) => (
-          <MenuItem key={sample.id} icon={<FileText />} onSelect={() => openSample(sample)}>
-            {sample.name}
-          </MenuItem>
-        ))}
       </MenuContent>
     </Menu>
   )
@@ -156,7 +147,7 @@ function DocumentList() {
   const { open } = useDocuments.getState()
 
   return (
-    <MenuRadioGroup value={activeId} onValueChange={open}>
+    <MenuRadioGroup value={activeId ?? undefined} onValueChange={open}>
       {sortedDocuments(documents).map((doc) => (
         // The time tells apart diagrams that share a name.
         <MenuRadioItem key={doc.id} value={doc.id} hint={timeAgo(doc.updatedAt)}>

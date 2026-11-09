@@ -31,7 +31,7 @@ import { useEffect, useRef } from 'react'
 import type { Hint } from '@/dbml/hints'
 import { completeDbml, type DbmlCompletion, type Diagnostic } from '@/dbml/parse'
 import { setCursorOffset, sourceChanged, useDiagram } from '@/store/diagram'
-import { useDocuments } from '@/store/documents'
+import { activeDocument, useDocuments } from '@/store/documents'
 import { useUi } from '@/store/ui'
 import { flashField, registerEditor } from './bridge'
 import { dbml } from './dbmlLanguage'
@@ -135,6 +135,14 @@ const extensions: Extension[] = [
       useDocuments.getState().setSource(text)
       sourceChanged(text)
     }
+    if (update.focusChanged) {
+      // Focus that arrives by Tab is keyboard use; the status bar then shows the way out.
+      useUi
+        .getState()
+        .setEditorKeyboardFocus(
+          update.view.hasFocus && document.documentElement.dataset.input === 'keyboard',
+        )
+    }
     if (update.focusChanged && !update.view.hasFocus) {
       setCursorOffset(null)
     } else if (
@@ -169,8 +177,12 @@ export function CodeEditor() {
 
   // A fresh state per document keeps undo history from leaking between diagrams.
   useEffect(() => {
-    const doc = useDocuments.getState().documents[activeId]
-    viewRef.current?.setState(EditorState.create({ doc: doc?.source ?? '', extensions }))
+    const view = viewRef.current
+    const doc = activeDocument()
+    if (!view) return
+    view.setState(EditorState.create({ doc: doc?.source ?? '', extensions }))
+    // A new document starts at its first line, not where the previous one was scrolled to.
+    view.scrollDOM.scrollTop = 0
     // Also reloads when another tab saved a newer version of the open diagram.
   }, [activeId, externalRevision])
 

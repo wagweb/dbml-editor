@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { describe, it } from 'vitest'
 import { parseDbml } from '@/dbml/parse'
-import { SAMPLES } from '@/dbml/samples'
+import { SAMPLES } from '@/test/schemas'
 import { LIGHT_PALETTE, renderSvg } from '@/export/svg'
 import { runLayout } from './elk'
 import {

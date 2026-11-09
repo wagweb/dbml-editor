@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import type { ImportDialect } from '@/dbml/sql'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
@@ -16,6 +17,14 @@ export type PaletteMode =
   | { kind: 'all' }
   | { kind: 'path'; fromId: string }
   | { kind: 'relation'; from: { tableId: string; column: string } }
+
+/** SQL that arrived by paste or drop and waits in the import dialog. */
+export interface ImportDraft {
+  sql: string
+  dialect: ImportDialect
+  /** Name for the diagram, e.g. from the file that was dropped. */
+  name?: string
+}
 
 export const EDITOR_MIN_WIDTH = 280
 export const EDITOR_MAX_WIDTH = 720
@@ -46,6 +55,11 @@ interface UiState {
   commandOpen: boolean
   paletteMode: PaletteMode
   dialog: DialogId | null
+  importDraft: ImportDraft | null
+  /** A file is being dragged over the window. */
+  dropping: boolean
+  /** The code editor has focus and got it from the keyboard; the status bar shows the way out. */
+  editorKeyboardFocus: boolean
   toast: ToastMessage | null
 
   setTheme: (theme: ThemePreference) => void
@@ -60,6 +74,9 @@ interface UiState {
   setCommandOpen: (open: boolean) => void
   openPalette: (mode?: PaletteMode) => void
   openDialog: (dialog: DialogId | null) => void
+  openImport: (draft?: ImportDraft) => void
+  setDropping: (dropping: boolean) => void
+  setEditorKeyboardFocus: (focused: boolean) => void
   showToast: (toast: Omit<ToastMessage, 'id' | 'tone'> & { tone?: ToastMessage['tone'] }) => void
   dismissToast: (id?: number) => void
 }
@@ -81,6 +98,9 @@ export const useUi = create<UiState>()(
       commandOpen: false,
       paletteMode: ALL_COMMANDS,
       dialog: null,
+      importDraft: null,
+      dropping: false,
+      editorKeyboardFocus: false,
       toast: null,
 
       setTheme: (theme) => set({ theme }),
@@ -97,7 +117,14 @@ export const useUi = create<UiState>()(
       setCommandOpen: (commandOpen) =>
         set(commandOpen ? { commandOpen } : { commandOpen, paletteMode: ALL_COMMANDS }),
       openPalette: (mode = ALL_COMMANDS) => set({ commandOpen: true, paletteMode: mode }),
-      openDialog: (dialog) => set({ dialog }),
+      openDialog: (dialog) => set(dialog === null ? { dialog, importDraft: null } : { dialog }),
+      openImport: (draft) => set({ dialog: 'import-sql', importDraft: draft ?? null }),
+      setDropping: (dropping) => {
+        if (get().dropping !== dropping) set({ dropping })
+      },
+      setEditorKeyboardFocus: (editorKeyboardFocus) => {
+        if (get().editorKeyboardFocus !== editorKeyboardFocus) set({ editorKeyboardFocus })
+      },
       showToast: (toast) => {
         toastId += 1
         set({ toast: { tone: 'neutral', ...toast, id: toastId } })

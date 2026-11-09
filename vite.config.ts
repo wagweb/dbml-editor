@@ -20,7 +20,7 @@ export default defineConfig({
       include: ['src/dbml/**', 'src/layout/**', 'src/share/**', 'src/export/svg.ts'],
       exclude: [
         '**/*.test.ts',
-        'src/dbml/samples.ts',
+        'src/test/**',
         'src/dbml/sql.ts',
         'src/layout/engine.ts',
         'src/layout/measure.ts',

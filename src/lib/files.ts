@@ -25,6 +25,9 @@ interface PermissionHandle {
   requestPermission?: (descriptor: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>
 }
 
+/** Files the app opens: DBML, plain text holding DBML, and SQL for the import. */
+export const OPENABLE = ['.dbml', '.sql', '.txt']
+
 export interface PickedFile {
   name: string
   text: string
@@ -36,6 +39,10 @@ export interface PickedFile {
 const DBML_TYPE: PickerType = {
   description: 'DBML schema',
   accept: { 'text/plain': ['.dbml', '.txt'] },
+}
+const OPEN_TYPE: PickerType = {
+  description: 'DBML or SQL',
+  accept: { 'text/plain': OPENABLE },
 }
 const PICKER_ID = 'keyline-dbml'
 
@@ -61,7 +68,7 @@ export async function pickFile(): Promise<PickedFile | null> {
   const open = picker().showOpenFilePicker
   if (open) {
     try {
-      const [handle] = await open({ id: PICKER_ID, types: [DBML_TYPE] })
+      const [handle] = await open({ id: PICKER_ID, types: [OPEN_TYPE] })
       if (!handle) return null
       const file = await handle.getFile()
       return { name: file.name, text: await file.text(), lastModified: file.lastModified, handle }
@@ -77,7 +84,7 @@ function pickWithInput(): Promise<PickedFile | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.dbml,.txt,text/plain'
+    input.accept = [...OPENABLE, 'text/plain'].join(',')
     input.style.display = 'none'
     const finish = (value: PickedFile | null) => {
       input.remove()

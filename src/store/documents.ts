@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { SAMPLES, STARTER_SOURCE } from '@/dbml/samples'
+import { STARTER_SOURCE } from '@/dbml/starter'
 import type { StoredRoute } from '@/layout/elk'
 import type { DetailLevel } from '@/layout/geometry'
 import type { Point } from '@/layout/router'
@@ -16,6 +16,8 @@ export interface ViewLayout {
   signature: string | null
   /** False once tables were arranged by hand; new tables are then placed incrementally. */
   auto: boolean
+  /** Group pairs the automatic layout stacked; the next layout keeps that decision. */
+  stacked?: string[]
 }
 
 /** The whole diagram's arrangement plus one per DiagramView, keyed by the view's name. */
@@ -45,7 +47,8 @@ export interface DiagramDocument {
 
 interface DocumentsState {
   documents: Record<string, DiagramDocument>
-  activeId: string
+  /** Null until the first diagram is created, and again after the last one is deleted. */
+  activeId: string | null
   /** Counts replacements of the open diagram by another browser tab. Not persisted. */
   externalRevision: number
 
@@ -92,8 +95,6 @@ function uniqueName(base: string, documents: Record<string, DiagramDocument>): s
   }
 }
 
-const first = newDocument(SAMPLES[0]!.name, SAMPLES[0]!.source)
-
 const STORAGE_KEY = 'keyline:documents'
 
 let saveFailureReported = false
@@ -113,14 +114,15 @@ export const useDocuments = create<DocumentsState>()(
     (set, get) => {
       const patchActive = (patch: (doc: DiagramDocument) => Partial<DiagramDocument>) => {
         const { documents, activeId } = get()
+        if (activeId === null) return
         const active = documents[activeId]
         if (!active) return
         set({ documents: { ...documents, [activeId]: { ...active, ...patch(active) } } })
       }
 
       return {
-        documents: { [first.id]: first },
-        activeId: first.id,
+        documents: {},
+        activeId: null,
         externalRevision: 0,
 
         create: (init) => {
@@ -164,9 +166,9 @@ export const useDocuments = create<DocumentsState>()(
           if (!documents[id]) return
           const rest = { ...documents }
           delete rest[id]
+          // Without diagrams the app shows its start screen again.
           if (Object.keys(rest).length === 0) {
-            const fresh = newDocument('Untitled diagram', STARTER_SOURCE)
-            set({ documents: { [fresh.id]: fresh }, activeId: fresh.id })
+            set({ documents: rest, activeId: null })
             return
           }
           const next =
@@ -211,7 +213,9 @@ export const useDocuments = create<DocumentsState>()(
         const documents = saved?.documents
         if (!documents || Object.keys(documents).length === 0) return current
         const activeId =
-          saved.activeId && documents[saved.activeId] ? saved.activeId : Object.keys(documents)[0]!
+          saved.activeId && documents[saved.activeId]
+            ? saved.activeId
+            : (sortedDocuments(documents)[0]?.id ?? null)
         return { ...current, documents, activeId }
       },
     },
@@ -220,6 +224,12 @@ export const useDocuments = create<DocumentsState>()(
 
 export function sortedDocuments(documents: Record<string, DiagramDocument>): DiagramDocument[] {
   return Object.values(documents).sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** The open diagram, or undefined on the start screen. */
+export function activeDocument(): DiagramDocument | undefined {
+  const { documents, activeId } = useDocuments.getState()
+  return activeId === null ? undefined : documents[activeId]
 }
 
 /**
@@ -238,6 +248,7 @@ function mergeFromOtherTab(raw: string): void {
 
   const { documents, activeId, externalRevision } = useDocuments.getState()
   const merged = { ...documents }
+  const hadNone = activeId === null
   let changed = false
   let activeReplaced = false
   for (const [id, doc] of Object.entries(incoming as Record<string, DiagramDocument>)) {
@@ -251,6 +262,8 @@ function mergeFromOtherTab(raw: string): void {
   if (!changed) return
   useDocuments.setState({
     documents: merged,
+    // A diagram created in another tab ends the start screen here as well.
+    activeId: hadNone ? (sortedDocuments(merged)[0]?.id ?? null) : activeId,
     externalRevision: activeReplaced ? externalRevision + 1 : externalRevision,
   })
 }

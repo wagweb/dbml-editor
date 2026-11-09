@@ -12,8 +12,9 @@ import {
   textHash,
   writeFile,
 } from '@/lib/files'
-import { useDocuments, type DiagramDocument } from '@/store/documents'
+import { useDocuments, type DiagramDocument, activeDocument } from '@/store/documents'
 import { useUi } from '@/store/ui'
+import { baseName, detectKind, openText } from './openText'
 
 /** File handles cannot be put in localStorage; they live here and in IndexedDB. */
 const handles = new Map<string, FileSystemFileHandle>()
@@ -28,15 +29,6 @@ function restoreHandles(): Promise<void> {
     })
     .catch(() => undefined)
   return restored
-}
-
-function activeDocument(): DiagramDocument | undefined {
-  const { documents, activeId } = useDocuments.getState()
-  return documents[activeId]
-}
-
-function baseName(fileName: string): string {
-  return fileName.replace(/\.[^.]+$/, '') || fileName
 }
 
 function link(id: string, name: string, text: string, handle: FileSystemFileHandle | null): void {
@@ -66,6 +58,21 @@ export async function openFile(): Promise<void> {
     return
   }
   if (!picked) return
+  await openPicked(picked)
+}
+
+/** SQL goes to the import; DBML opens, linked to its file when the browser gave a handle. */
+async function openPicked(picked: {
+  name: string
+  text: string
+  lastModified: number
+  handle: FileSystemFileHandle | null
+}): Promise<void> {
+  const sql = picked.name.toLowerCase().endsWith('.sql') || detectKind(picked.text) === 'sql'
+  if (sql) {
+    openText(picked.text, { fileName: picked.name })
+    return
+  }
   const documents = useDocuments.getState()
 
   // The same file opened twice should land in the same diagram, with its layout.
@@ -84,8 +91,44 @@ export async function openFile(): Promise<void> {
   }
 
   const id = documents.create({ name: baseName(picked.name), source: picked.text })
-  link(id, picked.name, picked.text, picked.handle)
-  lastSeen.set(id, picked.lastModified)
+  // Only a real .dbml file can be written back; plain text stays a browser diagram.
+  if (picked.name.toLowerCase().endsWith('.dbml')) {
+    link(id, picked.name, picked.text, picked.handle)
+    lastSeen.set(id, picked.lastModified)
+  }
+}
+
+/** Files dropped onto the window. Only the first one is opened. */
+export async function openDropped(transfer: DataTransfer): Promise<void> {
+  const item = [...transfer.items].find((entry) => entry.kind === 'file')
+  const file = item?.getAsFile() ?? transfer.files[0]
+  if (!file) return
+  if (!/\.(dbml|sql|txt)$/i.test(file.name)) {
+    toast('Drop a .dbml or .sql file', 'error')
+    return
+  }
+  // Chromium hands out a writable handle for dropped files; others only the contents.
+  const getHandle = (
+    item as (DataTransferItem & { getAsFileSystemHandle?: () => Promise<unknown> }) | undefined
+  )?.getAsFileSystemHandle
+  let handle: FileSystemFileHandle | null = null
+  try {
+    const candidate = getHandle ? await getHandle.call(item) : null
+    if (candidate instanceof FileSystemFileHandle) handle = candidate
+  } catch {
+    handle = null
+  }
+  try {
+    await openPicked({
+      name: file.name,
+      text: await file.text(),
+      lastModified: file.lastModified,
+      handle,
+    })
+  } catch (error) {
+    console.error(error)
+    toast(`${file.name} could not be read`, 'error')
+  }
 }
 
 /**
