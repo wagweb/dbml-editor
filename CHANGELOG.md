@@ -19,3 +19,5 @@
 - Focus mode, three detail levels and a large-name overview when zoomed out.
 - Keyboard and single-click alternatives for moving tables, focus handling around the
   details panel, spoken status changes.
+- Export as PNG, SVG, SQL (PostgreSQL, MySQL, SQL Server, Oracle) and DBML; import from SQL.
+- Share links that carry the whole diagram in the URL.
