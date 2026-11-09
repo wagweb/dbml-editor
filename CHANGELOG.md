@@ -25,3 +25,4 @@
 - Menus, search and completion mark the active row without one-sided accent bars; theme
   choice with a system option; overview map that hides itself when the whole diagram is
   visible.
+- Unit tests (Vitest) and end-to-end tests with an accessibility scan (Playwright, axe).
