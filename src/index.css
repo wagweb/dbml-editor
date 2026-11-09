@@ -13,6 +13,7 @@
   --color-surface: var(--surface);
   --color-fill: var(--fill);
   --color-fill-strong: var(--fill-strong);
+  --color-raised: var(--raised);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
@@ -33,6 +34,7 @@
 
   --shadow-card: var(--shadow-card);
   --shadow-pop: var(--shadow-pop);
+  --shadow-raised: var(--shadow-raised);
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -49,6 +51,8 @@
   --surface: #ffffff;
   --fill: #f4f4f4;
   --fill-strong: #ebebeb;
+  /* A surface lifted off a fill: the thumb of a switch. */
+  --raised: #ffffff;
   --line: #e8e8e8;
   --line-strong: #d4d4d4;
   --ink: #171717;
@@ -74,6 +78,9 @@
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 10px 32px -8px rgb(0 0 0 / 0.16);
+  /* The ring reaches 3:1 on --fill, so a chosen segment never rests on colour alone. */
+  --shadow-raised:
+    0 0 0 1px var(--line-input), 0 1px 1px rgb(0 0 0 / 0.06), 0 4px 10px -4px rgb(0 0 0 / 0.25);
 
   --syntax-keyword: var(--accent);
   --syntax-setting: #0f766e;
@@ -91,6 +98,8 @@
   --surface: #0e0e0e;
   --fill: #181818;
   --fill-strong: #222222;
+  /* Clearly lighter than the track, so the thumb reads as a key, not as a hole or a frame. */
+  --raised: #454545;
   --line: #232323;
   --line-strong: #363636;
   --ink: #ededed;
@@ -116,6 +125,8 @@
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5);
   --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.09), 0 12px 36px -8px rgb(0 0 0 / 0.8);
+  /* No inner top highlight: right under the ring it reads as a second border. */
+  --shadow-raised: 0 0 0 1px var(--line-input), 0 2px 4px rgb(0 0 0 / 0.6);
 
   --syntax-setting: #3fd0c0;
   --syntax-string: #f0b072;

@@ -73,6 +73,8 @@ function SqlExport() {
       <div className="px-5 pb-3">
         <Segmented
           label="Database"
+          // Four database names do not fit side by side on a phone.
+          className="w-full max-sm:grid-flow-row max-sm:grid-cols-2"
           value={dialect}
           options={EXPORT_DIALECTS}
           onChange={setDialect}
@@ -166,6 +168,8 @@ function SqlImport({ onDone }: { onDone: () => void }) {
       <div className="px-5 pb-3">
         <Segmented
           label="Database"
+          // Four database names do not fit side by side on a phone.
+          className="w-full max-sm:grid-flow-row max-sm:grid-cols-2"
           value={dialect}
           options={IMPORT_DIALECTS}
           onChange={setDialect}
