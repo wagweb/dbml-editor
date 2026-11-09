@@ -1,9 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
   <style>
-    .ink { fill: #171717; stroke: #171717 }
-    @media (prefers-color-scheme: dark) { .ink { fill: #ededed; stroke: #ededed } }
+    .tile { fill: #171717 }
+    .mark { stroke: #ffffff }
+    .core { fill: #ffffff }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #ededed }
+      .mark { stroke: #0a0a0a }
+      .core { fill: #0a0a0a }
+    }
   </style>
-  <rect class="ink" x="2" y="2" width="7" height="7" rx="1.75" stroke="none"/>
-  <path d="M5.5 9v3.5a2 2 0 0 0 2 2H11" stroke="#4c5dff" stroke-width="1.6" stroke-linecap="round"/>
-  <rect class="ink" x="11.75" y="11.25" width="6.5" height="6.5" rx="1.5" stroke-width="1.5" fill="none" style="fill:none"/>
+  <rect class="tile" width="32" height="32" rx="7.5"/>
+  <g class="mark" stroke-width="2">
+    <rect x="6.75" y="6.75" width="12.5" height="12.5" rx="3.25"/>
+    <rect x="12.75" y="12.75" width="12.5" height="12.5" rx="3.25"/>
+  </g>
+  <rect class="core" x="12.75" y="12.75" width="6.5" height="6.5" rx="1"/>
 </svg>
