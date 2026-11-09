@@ -1,0 +1,702 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+/* Styles that should only show while the keyboard is in use, see lib/inputModality.ts. */
+@custom-variant keyboard (&:where([data-input='keyboard'] *));
+
+@theme inline {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-edge: var(--edge);
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-panel: 12px;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-pop-in: pop-in 140ms var(--ease-out);
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-sheet-in: sheet-in 220ms var(--ease-out);
+}
+
+:root {
+  color-scheme: light;
+
+  --canvas: #ffffff;
+  --panel: #fafafa;
+  --surface: #ffffff;
+  --fill: #f4f4f4;
+  --fill-strong: #ebebeb;
+  --line: #e8e8e8;
+  --line-strong: #d4d4d4;
+  --ink: #171717;
+  --ink-2: #525252;
+  /* Darkest grey that still reads as secondary; 4.8:1 on --fill. */
+  --ink-3: #6b6b6b;
+
+  /* Drafting ultramarine: the one colour that marks focus, selection and live relations. */
+  --accent: #2f43f5;
+  --accent-hover: #2233d6;
+  --accent-ink: #ffffff;
+  --accent-soft: color-mix(in oklab, var(--accent) 9%, var(--surface));
+
+  --danger: #d1281c;
+  --warn: #a8540a;
+  --ok: #177a3c;
+
+  /* Relations carry meaning, so they need 3:1 against the canvas. */
+  --edge: #8a8a8a;
+  --line-input: #8a8a8a;
+  --grid: #e3e3e3;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 10px 32px -8px rgb(0 0 0 / 0.16);
+
+  --syntax-keyword: var(--accent);
+  --syntax-setting: #0f766e;
+  --syntax-string: #a8540a;
+  --syntax-literal: #8a2be2;
+  --syntax-type: var(--ink-2);
+  --syntax-comment: var(--ink-3);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: #000000;
+  --panel: #0a0a0a;
+  --surface: #0e0e0e;
+  --fill: #181818;
+  --fill-strong: #222222;
+  --line: #232323;
+  --line-strong: #363636;
+  --ink: #ededed;
+  --ink-2: #a8a8a8;
+  --ink-3: #8c8c8c;
+
+  --accent: #7d8eff;
+  --accent-hover: #98a6ff;
+  --accent-ink: #060717;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, var(--surface));
+
+  --danger: #ff6b5e;
+  --warn: #f0a04b;
+  --ok: #4ccb7c;
+
+  --edge: #5c5c5c;
+  --line-input: #6e6e6e;
+  --grid: #222222;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.09), 0 12px 36px -8px rgb(0 0 0 / 0.8);
+
+  --syntax-setting: #3fd0c0;
+  --syntax-string: #f0b072;
+  --syntax-literal: #c9a6ff;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 24%, transparent);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.985);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@keyframes table-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+/* ---------------------------------------------------------------- canvas */
+
+.canvas-viewport {
+  position: relative;
+  /* Clip instead of hidden: focusing an off-screen table must not scroll the canvas. */
+  overflow: clip;
+  background-color: var(--canvas);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* Registration marks of a drafting sheet. Tile size and offset follow the camera. */
+.canvas-grid {
+  --grid-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 12.5v7M12.5 16h7' stroke='%23000' stroke-width='1' fill='none'/%3E%3C/svg%3E");
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--grid);
+  -webkit-mask-image: var(--grid-mark);
+  mask-image: var(--grid-mark);
+  -webkit-mask-size: var(--grid-size, 32px) var(--grid-size, 32px);
+  mask-size: var(--grid-size, 32px) var(--grid-size, 32px);
+  -webkit-mask-position: var(--grid-x, 0) var(--grid-y, 0);
+  mask-position: var(--grid-x, 0) var(--grid-y, 0);
+}
+
+.canvas-viewport[data-panning='true'] {
+  cursor: grabbing;
+}
+
+.canvas-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.table-node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    var(--shadow-card);
+  cursor: default;
+  transition:
+    box-shadow 120ms ease-out,
+    opacity 160ms ease-out;
+}
+
+.table-node:focus-visible {
+  outline-offset: 3px;
+}
+
+.table-node[data-dragging='true'] {
+  cursor: grabbing;
+  z-index: 3;
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 12px 28px -6px rgb(0 0 0 / 0.22);
+}
+
+.table-node[data-cursor='true'] {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 55%, var(--line-strong)),
+    var(--shadow-card);
+}
+
+.table-node[data-selected='true'] {
+  z-index: 2;
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 10px 24px -10px rgb(0 0 0 / 0.28);
+}
+
+/* Tables outside the focus go grey instead of transparent, so their text keeps 4.5:1. */
+.table-node[data-dimmed='true'] {
+  --ink: var(--ink-3);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.table-node[data-dimmed='true'] .table-header {
+  background: var(--fill);
+}
+
+.table-node[data-new='true'] {
+  animation: table-in 260ms var(--ease-out);
+}
+
+.canvas-world[data-animating='true'] .table-node {
+  transition:
+    transform 340ms var(--ease-out),
+    box-shadow 120ms ease-out,
+    opacity 160ms ease-out;
+}
+
+.canvas-world[data-animating='true'] .group-region {
+  transition:
+    transform 340ms var(--ease-out),
+    width 340ms var(--ease-out),
+    height 340ms var(--ease-out);
+}
+
+.table-header {
+  background: color-mix(in oklab, var(--tone, transparent) var(--tone-mix, 0%), var(--fill));
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+.table-node[data-detail='names'] .table-header {
+  border-bottom: 0;
+  border-radius: var(--radius-card);
+}
+
+.column-row[data-active='true'] {
+  background: var(--accent-soft);
+}
+
+.column-row[data-active='true'] .column-name {
+  color: var(--accent);
+}
+
+/* Far zoomed out the columns are unreadable anyway: show the name large instead. */
+.table-lod {
+  display: none;
+}
+
+/* Hidden by opacity, so the content stays available to assistive technology. */
+.canvas-world[data-lod='far'] .table-body,
+.canvas-world[data-lod='far'] .table-header {
+  opacity: 0;
+}
+
+.canvas-world[data-lod='far'] .table-node {
+  background: color-mix(in oklab, var(--tone, var(--ink-3)) 12%, var(--surface));
+}
+
+.canvas-world[data-lod='far'] .table-lod {
+  display: flex;
+}
+
+.group-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--tone) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tone) 28%, transparent);
+}
+
+.group-label {
+  color: color-mix(in oklab, var(--tone) 55%, var(--ink));
+  cursor: grab;
+}
+
+.edge-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+
+.canvas-world[data-animating='true'] .edge-layer {
+  opacity: 0;
+  transition-duration: 60ms;
+}
+
+.edge {
+  pointer-events: stroke;
+}
+
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  /* 24px on screen at every zoom level. */
+  stroke-width: 24;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.edge-line,
+.edge-marker {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    stroke 100ms ease-out,
+    opacity 160ms ease-out;
+  vector-effect: non-scaling-stroke;
+}
+
+.edge[data-dimmed='true'] .edge-line,
+.edge[data-dimmed='true'] .edge-marker {
+  opacity: 0.22;
+}
+
+.edge[data-active='true'] .edge-line,
+.edge[data-active='true'] .edge-marker {
+  stroke: var(--accent);
+  stroke-width: 1.75;
+}
+
+/* The pulse travels from the foreign key towards the row it references. */
+.edge-flow {
+  fill: none;
+  stroke: var(--canvas);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-dasharray: 1.5 12.5;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+}
+
+.edge[data-active='true'] .edge-flow {
+  opacity: 0.9;
+  /* A few runs show the direction, then the gaps fade and the line is solid again. */
+  animation:
+    edge-flow 700ms linear 5,
+    edge-flow-out 500ms ease-out 3s forwards;
+}
+
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@keyframes edge-flow-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- editor */
+
+.cm-editor {
+  height: 100%;
+  font-size: 12.5px;
+  background: transparent;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.7;
+  overflow: auto;
+}
+
+.cm-editor .cm-content {
+  padding: 12px 0 48px;
+  caret-color: var(--ink);
+}
+
+.cm-editor .cm-line {
+  padding: 0 16px 0 6px;
+}
+
+.cm-editor .cm-gutters {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 34px;
+  padding: 0 10px 0 8px;
+}
+
+.cm-editor .cm-activeLine {
+  background: color-mix(in oklab, var(--ink) 3.5%, transparent);
+}
+
+.cm-editor .cm-activeLineGutter {
+  background: transparent;
+  color: var(--ink);
+}
+
+.cm-editor .cm-cursor {
+  border-left: 1.5px solid var(--ink);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+  background: color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+.cm-editor .cm-matchingBracket,
+.cm-editor.cm-focused .cm-matchingBracket {
+  background: color-mix(in oklab, var(--ink) 10%, transparent);
+  outline: none;
+}
+
+.cm-editor .cm-selectionMatch {
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+}
+
+.cm-editor .cm-reveal-flash {
+  animation: reveal-flash 900ms ease-out;
+}
+
+@keyframes reveal-flash {
+  from {
+    background: color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+}
+
+.cm-editor .cm-tooltip {
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  max-height: 240px;
+  padding: 4px;
+}
+
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--fill-strong);
+  color: var(--ink);
+}
+
+/* Return glyph on the row Enter will insert. Reserved on every row so nothing shifts. */
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul > li::after {
+  content: '\21B5';
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-2);
+  visibility: hidden;
+}
+
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]::after {
+  visibility: visible;
+}
+
+.cm-editor .cm-completionLabel {
+  flex: 1;
+}
+
+.cm-editor .cm-completionDetail {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+.cm-editor .cm-completionMatchedText {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.cm-editor .cm-completionIcon {
+  display: none;
+}
+
+.cm-editor .cm-diagnostic {
+  padding: 6px 10px;
+  border: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* The kind of problem is spelled out, so it does not depend on a colour. */
+.cm-editor .cm-diagnostic::before {
+  content: 'Error';
+  margin-right: 8px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.cm-editor .cm-diagnostic-warning::before {
+  content: 'Warning';
+  color: var(--warn);
+}
+
+.cm-editor .cm-lintRange-error {
+  background-image: none;
+  text-decoration: underline wavy var(--danger);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.cm-editor .cm-lintRange-warning {
+  background-image: none;
+  /* Dashed instead of wavy: warnings and errors differ by shape, not only by colour. */
+  text-decoration: underline dashed var(--warn);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.cm-editor .cm-lint-marker {
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
+  border-radius: 50%;
+  content: '';
+}
+
+.cm-editor .cm-panels {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.cm-editor .cm-panel.cm-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.cm-editor .cm-panel.cm-search br {
+  display: none;
+}
+
+.cm-editor .cm-panel.cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.cm-editor .cm-textfield {
+  height: 26px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.cm-editor .cm-button {
+  height: 26px;
+  margin: 0;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  background-image: none;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.cm-editor .cm-button:hover {
+  background: var(--fill);
+}
+
+.cm-editor .cm-panel.cm-search [name='close'] {
+  position: static;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--ink-2);
+  font-size: 16px;
+}
+
+.cm-editor .cm-searchMatch {
+  background: color-mix(in oklab, var(--warn) 26%, transparent);
+}
+
+.cm-editor .cm-searchMatch-selected {
+  background: color-mix(in oklab, var(--accent) 34%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

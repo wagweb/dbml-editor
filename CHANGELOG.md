@@ -21,3 +21,7 @@
   details panel, spoken status changes.
 - Export as PNG, SVG, SQL (PostgreSQL, MySQL, SQL Server, Oracle) and DBML; import from SQL.
 - Share links that carry the whole diagram in the URL.
+- Search palette, keyboard shortcuts, light and dark theme, mobile layout.
+- Menus, search and completion mark the active row without one-sided accent bars; theme
+  choice with a system option; overview map that hides itself when the whole diagram is
+  visible.
