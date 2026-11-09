@@ -83,8 +83,11 @@ Rules:
 
 ## Details panel
 
-- 352 px wide. The name is never truncated, it wraps. Group (with its colour) and alias
-  are chips under it; the table note follows as plain text.
+- 352 px wide. The header is the selected card's header, enlarged: the same group tint
+  (`.details-header`), and the group's name above the table's in the group's colour, as
+  the canvas labels a group region (`.details-context`). Enums and notes say what they are
+  in that place. An alias follows the name as DBML writes it, `users as U`. The name is
+  never truncated, it wraps; the table note follows as plain text.
 - Tabs in the switch's look (`TabList` in `src/ui/Segmented.tsx`): Columns, Relations,
   and Indexes or Data only when there are any. Counts sit in the tab in the tab's text
   colour, quieter by weight. The open tab stays when another table is selected.

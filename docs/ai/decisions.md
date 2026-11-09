@@ -264,3 +264,7 @@ with `(revised by #N)`.
     marked instead of "not null" on nearly every row. The reach of the highlight moved to
     the Relations tab, with counts and the list of the tables it adds, so the setting
     explains itself by what it shows. Moving and the path question moved to a footer.
+64. **2026-11-10: The panel header echoes the card.** Niklas found the group pill out of
+    place. The header now takes the card header's group tint and puts the group name
+    above the table name in the group's colour, the way the canvas labels a region. No
+    chips; the alias is written as DBML writes it.

@@ -65,6 +65,8 @@
 - The details panel has tabs (Columns, Relations, Indexes, Data). Columns are one line
   each and open for their details and actions; relations show how far the highlight
   reaches, with counts and the tables it adds; moving and paths sit in a footer.
+- The details header takes the selected card's group tint, with the group name above the
+  table name instead of a pill.
 - Header controls are spaced evenly by what is visible: 18 px between every edge.
 - The editor's fold arrows sit right at the code; problem dots moved left of the line
   numbers and are coloured, round for errors and diamonds for warnings.
