@@ -12,3 +12,5 @@
   screen.
 - Several diagrams stored in the browser, with examples to start from.
 - Manual mode after dragging a table, with "Tidy up" and undo.
+- DBML editor based on CodeMirror 6 with syntax highlighting, completion from the official
+  DBML language service and inline problem markers.
