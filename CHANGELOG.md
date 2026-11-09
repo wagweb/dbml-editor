@@ -57,7 +57,8 @@
 - Large diagrams open at a zoom that shows columns; selecting a table brings it and its
   neighbours into view beside the details panel.
 - Below 50% zoom the toolbar offers "Show columns" instead of a detail switch that had no
-  effect there. Detail labels are shorter and never wrap.
+  effect there, in the same space, so the toolbar keeps its width. Detail labels are
+  shorter and never wrap.
 - Search finds whole words only ("cust" no longer finds "products"), starts with the best
   connected tables, and the relation picker lists keys first.
 - Schema hints are grouped by kind, with "Add index" for foreign keys, one or all at once.
@@ -75,6 +76,9 @@
   state; the palette input got a search icon and an Esc keycap.
 - New app icon: two overlapping table frames on a rounded black or white tile that flips
   with the theme.
+- Switches (column detail, relation steps, SQL dialect) have a raised thumb that slides to
+  the chosen option. Options share one width, so the switch never changes size; in the
+  SQL dialogs on a phone the four databases sit in two rows.
 
 ### Fixed
 
@@ -83,6 +87,10 @@
 - A click on a table no longer moves the camera while most of the table is on screen.
 - Buttons that open a menu (view options, export) now stay highlighted while the menu is
   open, like the diagram menu already did.
+- Menus stuck out 1 px past their button, because their outline is drawn outside the box.
+  The visible edge now lines up: left with left, right with right.
+- A hovered switch option touched the chosen one, and the chosen option showed a doubled
+  top edge in dark mode.
 - The "+" shortcut showed an empty keycap.
 - Relation lines vanished for about half a second after every layout change; they now
   return while the tables settle.

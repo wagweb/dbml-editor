@@ -32,6 +32,7 @@ relation, as in a join diagram. Black and white only: the tile uses `--ink`, the
 | `--panel`                     | `#fafafa`                       | `#0a0a0a`                       | Header, editor                                         |
 | `--surface`                   | `#ffffff`                       | `#0e0e0e`                       | Cards, menus, dialogs                                  |
 | `--fill`, `--fill-strong`     | `#f4f4f4`, `#ebebeb`            | `#181818`, `#222222`            | Hover, table headers                                   |
+| `--raised`                    | `#ffffff`                       | `#454545`                       | Thumb of a switch, lifted off its `--fill` track       |
 | `--line`, `--line-strong`     | `#e8e8e8`, `#d4d4d4`            | `#232323`, `#363636`            | Hairlines, card outline                                |
 | `--ink`, `--ink-2`, `--ink-3` | `#171717`, `#525252`, `#6b6b6b` | `#ededed`, `#a8a8a8`, `#8c8c8c` | Text                                                   |
 | `--accent`                    | `#2f43f5`                       | `#7d8eff`                       | Focus, selection, active relations                     |
@@ -58,7 +59,13 @@ Rules:
 - Lists you type into (search, code completion) mark the row that Enter will run with a
   return glyph at its end. The glyph always takes its space, so rows never shift.
 - A problem tooltip starts with the word "Error" or "Warning" instead of a colour stripe.
-- The chosen segment of a switch is framed (`--line-input`, 3:1), not filled with ink.
+- Switches (`src/ui/Segmented.tsx`) are one component everywhere: a `--fill` track and a
+  raised thumb (`--raised`, `--shadow-raised`) that slides to the chosen option in 200 ms
+  on `--ease-out`. The thumb's ring is `--line-input` (3:1 on the track), so the choice
+  does not rest on colour; in dark it is clearly lighter than the track, never a hole.
+  Options share the widest label's width, labels keep one weight, and a 2 px gap keeps a
+  hover fill clear of the ring. No inner highlight on the thumb: under the ring it reads
+  as a second border.
 - A selected table gets a 1.5 px accent ring and a real drop shadow. No coloured glow.
 - The relation pulse runs a few times, then fades. A highlighted line ends up solid.
 - The overview map only shows while part of the diagram is out of view.
@@ -112,10 +119,15 @@ Rules:
 ## Menus and toolbars
 
 - A button that opens a menu or popover keeps its hover fill while the menu is open.
+- A menu or popover lines up with its button on the aligned side: left edge on left edge
+  for `start`, right on right for `end`. The ring of `--shadow-pop` lies outside the box,
+  so the content is moved inward by it (`RING_ALIGN_OFFSET` in `src/ui/Menu.tsx`).
 - The view menu holds diagram options (enum cards, suggested groups, hints, overview map),
   the theme as a submenu that names the current choice, and the shortcuts. The column
   detail lives in the toolbar only.
-- Below 50% zoom the toolbar shows "Show columns" instead of the detail switch.
+- Below 50% zoom the toolbar shows "Show columns" instead of the detail switch. Both sit in
+  one grid cell and swap by `visibility`, so the toolbar keeps its width; the button takes
+  the track's shape.
 - Search reads "Search" in the header field and "Search tables, columns and actions"
   everywhere else; the field's accessible name is the full phrase.
 

@@ -201,3 +201,15 @@ with `(revised by #N)`.
 49. **2026-11-09: Only real pointer movement counts as mouse use.** Chrome reports a move
     when content changes under a resting pointer; that switched the keyboard ring off in
     menus. The input modality now ignores moves without a change of position.
+50. **2026-11-09: One switch component with a sliding thumb.** Asked for by Niklas: the
+    segment switches looked like a framed hole in dark mode, and the toolbar changed width
+    when "Show columns" replaced the detail switch below 50% zoom. The switch now has a
+    raised thumb that slides (a transform, placed from the measured box of the chosen
+    option, so uneven widths and two rows on a phone work too) and options of equal width.
+    The toolbar stacks the switch and "Show columns" in one cell. Two details came from
+    Niklas while testing: a hover fill touched the thumb (now a 2 px gap) and an inner
+    highlight doubled the thumb's top edge (removed).
+51. **2026-11-09: Menus align by their visible edge.** Reported by Niklas on the view
+    menu: the menu box was aligned with its button, but the 1 px ring of `--shadow-pop`
+    sits outside the box and stuck out. Menus and the hints popover are offset by that
+    ring, so the visible edge lines up with the button.
