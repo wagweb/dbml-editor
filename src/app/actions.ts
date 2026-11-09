@@ -1,10 +1,19 @@
+import { isTable } from '@/dbml/model'
 import type { Sample } from '@/dbml/samples'
 import { focusEditor, replaceEditorText, revealInEditor } from '@/editor/bridge'
 import { tableRect } from '@/layout/groups'
-import { arrange, endDrag, moveTables, selectTable, undoArrange, useDiagram } from '@/store/diagram'
+import {
+  arrange,
+  endDrag,
+  moveTables,
+  selectTable,
+  setPathTarget,
+  undoArrange,
+  useDiagram,
+} from '@/store/diagram'
 import { useDocuments } from '@/store/documents'
 import { resolveTheme, useUi } from '@/store/ui'
-import { insetsFor, revealRect } from '@/store/viewport'
+import { insetsFor, revealRect, visibleFraction } from '@/store/viewport'
 
 const NUDGE = 16
 
@@ -12,22 +21,47 @@ function tableElement(tableId: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-table-id="${CSS.escape(tableId)}"]`)
 }
 
-/**
- * Selects a table and brings it into view on the canvas and in the editor. Keyboard and
- * search callers pass `focusPanel`, so the details are the next thing they reach.
- */
-export function focusTable(tableId: string, options: { focusPanel?: boolean } = {}): void {
+interface FocusOptions {
+  /** Keyboard and search callers pass this, so the details are the next thing they reach. */
+  focusPanel?: boolean
+  /**
+   * Leave the camera alone while most of the table is on screen. Used for pointer clicks:
+   * the user can see the table, and a double-click must not land on a moving target.
+   */
+  keepCamera?: boolean
+}
+
+/** Selects a table and brings it into view on the canvas and in the editor. */
+export function focusTable(tableId: string, options: FocusOptions = {}): void {
   const { model, boxes, positions } = useDiagram.getState()
   const table = model.tables.find((t) => t.id === tableId)
   if (!table) return
   selectTable(tableId)
   const rect = tableRect(table, boxes, positions)
-  if (rect) revealRect(rect, { insets: insetsFor(true) })
+  const insets = insetsFor(true)
+  if (rect && !(options.keepCamera && visibleFraction(rect, insets) >= 0.5)) {
+    revealRect(rect, { insets })
+  }
   revealInEditor(table.range)
   if (options.focusPanel) {
     // The panel mounts with the selection, one frame later.
     requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-details]')?.focus())
   }
+}
+
+/**
+ * A click on a card selects it. With Shift held and another table already selected, it
+ * asks for the path between the two instead.
+ */
+export function clickTable(tableId: string, modifiers: { shiftKey: boolean }): void {
+  const { model, selectedTableId } = useDiagram.getState()
+  const target = model.tables.find((t) => t.id === tableId)
+  const selected = model.tables.find((t) => t.id === selectedTableId)
+  if (modifiers.shiftKey && target && selected && isTable(target) && isTable(selected)) {
+    if (target.id !== selected.id) setPathTarget(tableId)
+    return
+  }
+  focusTable(tableId, { keepCamera: true })
 }
 
 /** Scrolls a table into view without selecting it, e.g. when it receives keyboard focus. */
@@ -38,10 +72,17 @@ export function revealTable(tableId: string): void {
   if (rect) revealRect(rect, { insets: insetsFor(selectedTableId !== null) })
 }
 
-/** Closes the details panel and hands focus back to the table it described. */
+/**
+ * Closes the details panel and hands focus back to the table it described. A path
+ * question is taken back first, so one Escape returns to the plain selection.
+ */
 export function closeDetails(): void {
-  const { selectedTableId } = useDiagram.getState()
+  const { selectedTableId, pathTargetId } = useDiagram.getState()
   if (selectedTableId === null) return
+  if (pathTargetId !== null) {
+    setPathTarget(null)
+    return
+  }
   const active = document.activeElement
   const focusWasInPanel = active === document.body || active?.closest('[data-details]') != null
   selectTable(null)

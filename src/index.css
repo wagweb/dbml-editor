@@ -70,6 +70,7 @@
   --edge: #8a8a8a;
   --line-input: #8a8a8a;
   --grid: #e3e3e3;
+  --note: #fbf6e4;
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 10px 32px -8px rgb(0 0 0 / 0.16);
@@ -108,6 +109,7 @@
   --edge: #5c5c5c;
   --line-input: #6e6e6e;
   --grid: #222222;
+  --note: #1c1910;
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5);
   --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.09), 0 12px 36px -8px rgb(0 0 0 / 0.8);
@@ -268,6 +270,19 @@
     0 10px 24px -10px rgb(0 0 0 / 0.28);
 }
 
+/* The far end of a path question gets the same ring as the selected table. */
+.table-node[data-path-end='true'] {
+  z-index: 2;
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    var(--shadow-card);
+}
+
+/* Sticky notes are paper, not tables: a soft tint and no header band. */
+.table-node[data-kind='note'] {
+  background: var(--note);
+}
+
 /* Tables outside the focus go grey instead of transparent, so their text keeps 4.5:1. */
 .table-node[data-dimmed='true'] {
   --ink: var(--ink-3);
@@ -315,22 +330,133 @@
   color: var(--accent);
 }
 
-/* Far zoomed out the columns are unreadable anyway: show the name large instead. */
-.table-lod {
+/* A column found by search, or one a relation is being dragged from or onto. */
+.column-row[data-spotlight='true'],
+[data-details] [data-spotlight='true'] {
+  animation: row-flash 1.8s ease-out;
+}
+
+.column-row[data-link-source='true'],
+.column-row[data-link-target='true'] {
+  background: var(--accent-soft);
+}
+
+.column-row[data-link-target='true'] {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.column-row[data-link-target='true'] .column-name {
+  color: var(--accent);
+}
+
+@keyframes row-flash {
+  0%,
+  55% {
+    background-color: var(--accent-soft);
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+/*
+ * Handle for a new relation, sitting on the right edge of a row. It shows on hover only,
+ * so cards stay quiet; the details panel offers the same action for the keyboard.
+ */
+.relation-handle {
+  position: absolute;
+  top: 50%;
+  right: -9px;
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  translate: 0 -50%;
+  border-radius: 50%;
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+  touch-action: none;
+}
+
+.relation-handle-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.column-row:hover .relation-handle,
+.column-row[data-link-source='true'] .relation-handle {
+  opacity: 1;
+}
+
+.relation-handle:hover .relation-handle-dot,
+.column-row[data-link-source='true'] .relation-handle-dot {
+  background: var(--accent);
+}
+
+.table-node[data-dragging='true'] .relation-handle,
+.canvas-world:is([data-lod='far'], [data-lod='overview']) .relation-handle {
+  display: none;
+}
+
+.inline-edit {
+  font: inherit;
+  line-height: 1;
+}
+
+/*
+ * Three levels of detail. Near: rows. Far: the table name, as large as fits the card.
+ * Overview: grouped tables are plain blocks and the group name is set across its region.
+ */
+.table-lod,
+.group-overview {
   display: none;
 }
 
 /* Hidden by opacity, so the content stays available to assistive technology. */
-.canvas-world[data-lod='far'] .table-body,
-.canvas-world[data-lod='far'] .table-header {
+.canvas-world:is([data-lod='far'], [data-lod='overview']) .table-body,
+.canvas-world:is([data-lod='far'], [data-lod='overview']) .table-header {
   opacity: 0;
 }
 
-.canvas-world[data-lod='far'] .table-node {
+.canvas-world:is([data-lod='far'], [data-lod='overview']) .table-node {
   background: color-mix(in oklab, var(--tone, var(--ink-3)) 12%, var(--surface));
 }
 
-.canvas-world[data-lod='far'] .table-lod {
+.canvas-world:is([data-lod='far'], [data-lod='overview']) .table-lod {
+  display: flex;
+}
+
+.canvas-world[data-lod='overview'] .table-node[data-grouped='true'] .table-lod {
+  display: none;
+}
+
+.canvas-world[data-lod='overview'] .group-label {
+  opacity: 0;
+}
+
+.group-overview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+  color: color-mix(in oklab, var(--tone) 50%, var(--ink));
+}
+
+.canvas-world[data-lod='overview'] .group-overview {
   display: flex;
 }
 
@@ -346,6 +472,13 @@
 .group-label {
   color: color-mix(in oklab, var(--tone) 55%, var(--ink));
   cursor: grab;
+}
+
+/* A suggested group is a proposal: dashed, until it is written into the code. */
+.group-region[data-suggested='true'] {
+  box-shadow: none;
+  outline: 1px dashed color-mix(in oklab, var(--tone) 45%, transparent);
+  outline-offset: -1px;
 }
 
 .edge-layer {
@@ -397,6 +530,33 @@
 .edge[data-active='true'] .edge-marker {
   stroke: var(--accent);
   stroke-width: 1.75;
+}
+
+/* A column's link to its enum type is not a foreign key: thin and dashed. */
+.edge[data-kind='enum'] .edge-line {
+  stroke-dasharray: 3 4;
+}
+
+/* The relation being dragged out of a column. */
+.edge-preview {
+  pointer-events: none;
+}
+
+.edge-preview .edge-line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+
+.edge-preview[data-snapped='true'] .edge-line {
+  stroke-dasharray: none;
+}
+
+.edge-preview-end {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
 }
 
 /* The pulse travels from the foreign key towards the row it references. */
@@ -593,6 +753,11 @@
   color: var(--warn);
 }
 
+.cm-editor .cm-diagnostic-info::before {
+  content: 'Hint';
+  color: var(--ink-2);
+}
+
 .cm-editor .cm-lintRange-error {
   background-image: none;
   text-decoration: underline wavy var(--danger);
@@ -606,6 +771,18 @@
   text-decoration: underline dashed var(--warn);
   text-decoration-skip-ink: none;
   text-underline-offset: 3px;
+}
+
+/* Hints are advice: a quiet dotted line in the text colour, no gutter icon. */
+.cm-editor .cm-lintRange-info {
+  background-image: none;
+  text-decoration: underline dotted var(--ink-3);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.cm-editor .cm-lint-marker-info {
+  display: none;
 }
 
 .cm-editor .cm-lint-marker {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { shownModel } from '@/dbml/derive'
 import { parseDbml } from '@/dbml/parse'
 import {
   approximateMeasure,
@@ -84,10 +85,65 @@ describe('renderSvg', () => {
   })
 })
 
+describe('renderSvg with enums, notes and suggested groups', () => {
+  function cards() {
+    const parsed = parseDbml(`
+      Table a { id int [pk]
+        state mood }
+      Table b { id int [pk]
+        a_id int [ref: > a.id] }
+      Enum mood { happy
+        sad }
+      Note memo { 'Keep it short.' }
+    `).model!
+    const model = shownModel(parsed, { view: null, enums: true, suggestGroups: false })
+    model.groups.push({
+      id: 'suggested:a',
+      name: 'a',
+      tableIds: ['a', 'b'],
+      suggested: true,
+      range: { from: 0, to: 0 },
+    })
+    for (const table of model.tables) {
+      if (table.id === 'a' || table.id === 'b') table.groupId = 'suggested:a'
+    }
+    const refColumns = refColumnsByTable(model)
+    const boxes = new Map<string, TableBox>(
+      model.tables.map((t) => [
+        t.id,
+        computeTableBox(t, 'full', approximateMeasure, refColumns.get(t.id) ?? new Set()),
+      ]),
+    )
+    const positions = {
+      a: { x: 0, y: 0 },
+      b: { x: 400, y: 0 },
+      'enum:mood': { x: 0, y: 300 },
+      'note:memo': { x: 400, y: 300 },
+    }
+    return { model, boxes, positions, routes: {} }
+  }
+
+  it('draws enum cards with a tag and dashed links, notes on paper, suggested groups dashed', () => {
+    const { svg } = renderSvg({ ...cards(), palette: LIGHT_PALETTE })
+    expect(svg).toContain('>enum</text>')
+    expect(svg).toContain('>happy<')
+    expect(svg).toContain('stroke-dasharray="3 4"')
+    expect(svg).toContain(`fill="${LIGHT_PALETTE.note}"`)
+    expect(svg).toContain('>Keep it short.<')
+    expect(svg).toContain('stroke-dasharray="6 5"')
+    // The enum link has no markers, the relation has two.
+    const edges = new RegExp(`<g fill="none" stroke="${LIGHT_PALETTE.edge}"[^>]*>(.*?)</g>`).exec(
+      svg,
+    )
+    expect(edges?.[1]?.match(/<path /g)).toHaveLength(3)
+  })
+})
+
 describe('hiddenLabel', () => {
   it('reads naturally for one or many columns', () => {
     expect(hiddenLabel(1, 2)).toBe('1 more column')
     expect(hiddenLabel(3, 2)).toBe('3 more columns')
     expect(hiddenLabel(4, 0)).toBe('4 columns')
+    expect(hiddenLabel(2, 0, 'value')).toBe('2 values')
   })
 })

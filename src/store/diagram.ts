@@ -1,6 +1,10 @@
 import { create } from 'zustand'
-import { EMPTY_MODEL, type SchemaModel } from '@/dbml/model'
+import { shownModel } from '@/dbml/derive'
+import { shortestPath, withinSteps } from '@/dbml/graph'
+import { schemaHints, type Hint } from '@/dbml/hints'
+import { EMPTY_MODEL, type RefModel, type SchemaModel } from '@/dbml/model'
 import { parseDbml, type Diagnostic } from '@/dbml/parse'
+import { refreshRoutes } from '@/layout/edges'
 import { runLayout, type LayoutResult, type StoredRoute } from '@/layout/elk'
 import { getLayoutEngine } from '@/layout/engine'
 import {
@@ -10,14 +14,15 @@ import {
   type DetailLevel,
   type TableBox,
 } from '@/layout/geometry'
-import { contentBounds } from '@/layout/groups'
+import { contentBounds, tableRect } from '@/layout/groups'
 import { placeNewTables } from '@/layout/incremental'
 import { fontsReady, measureText } from '@/layout/measure'
-import type { Point } from '@/layout/router'
+import { bounds, type Point } from '@/layout/router'
 import { prefersReducedMotion } from '@/lib/platform'
 import { getOwn } from '@/lib/record'
-import { useDocuments, type DiagramDocument } from './documents'
-import { fitRect, insetsFor, useViewport } from './viewport'
+import { EMPTY_VIEW_LAYOUT, useDocuments, type DiagramDocument, type ViewLayout } from './documents'
+import { useUi, type FocusDepth } from './ui'
+import { fitRect, frameRect, insetsFor, useViewport } from './viewport'
 
 export type Hover =
   | { kind: 'table'; tableId: string }
@@ -31,18 +36,34 @@ export interface Emphasis {
   columns: ReadonlyMap<string, string>
   /** Tables that stay fully visible while one is selected. Null when nothing is dimmed. */
   focus: ReadonlySet<string> | null
+  /**
+   * Tables along the way from the selected table to the path target, both included.
+   * Null without a target; empty when the two are not connected.
+   */
+  path: readonly string[] | null
 }
 
-const NO_EMPHASIS: Emphasis = { refIds: new Set(), columns: new Map(), focus: null }
+export interface Spotlight {
+  tableId: string
+  column: string
+}
+
+const NO_EMPHASIS: Emphasis = { refIds: new Set(), columns: new Map(), focus: null, path: null }
 
 interface DiagramState {
-  /** Last model that parsed without errors. */
+  /** Everything the code declares. Views and view options narrow it down to `model`. */
+  fullModel: SchemaModel
+  /** What the canvas draws: the last model that parsed without errors, as shown. */
   model: SchemaModel
   diagnostics: Diagnostic[]
+  /** Advice about the schema, never errors. */
+  hints: Hint[]
   /** The source currently has errors, so the diagram shows the last valid version. */
   stale: boolean
   detail: DetailLevel
   auto: boolean
+  /** Name of the open DiagramView, null for the whole diagram. */
+  view: string | null
   boxes: ReadonlyMap<string, TableBox>
   positions: Record<string, Point>
   routes: Record<string, StoredRoute>
@@ -51,18 +72,25 @@ interface DiagramState {
   animating: boolean
   freshIds: ReadonlySet<string>
   selectedTableId: string | null
+  /** Second table of a path question: how does the selected table reach this one? */
+  pathTargetId: string | null
   cursorTableId: string | null
   hover: Hover | null
   emphasis: Emphasis
+  /** A column that was just found by search; it flashes briefly. */
+  spotlight: Spotlight | null
   canUndoArrange: boolean
 }
 
 export const useDiagram = create<DiagramState>()(() => ({
+  fullModel: EMPTY_MODEL,
   model: EMPTY_MODEL,
   diagnostics: [],
+  hints: [],
   stale: false,
   detail: 'full',
   auto: true,
+  view: null,
   boxes: new Map(),
   positions: {},
   routes: {},
@@ -71,9 +99,11 @@ export const useDiagram = create<DiagramState>()(() => ({
   animating: false,
   freshIds: new Set(),
   selectedTableId: null,
+  pathTargetId: null,
   cursorTableId: null,
   hover: null,
   emphasis: NO_EMPHASIS,
+  spotlight: null,
   canUndoArrange: false,
 }))
 
@@ -81,6 +111,7 @@ const { getState: get, setState: set } = useDiagram
 
 const PARSE_DELAY = 140
 const ANIMATION_MS = 360
+const SPOTLIGHT_MS = 1800
 /** A layout worker that never answers must not leave the canvas empty forever. */
 const LAYOUT_TIMEOUT_MS = 20_000
 
@@ -91,6 +122,11 @@ interface LayoutSnapshot {
   auto: boolean
 }
 
+interface PendingModel {
+  full: SchemaModel
+  shown: SchemaModel
+}
+
 /** Bumped by every request that replaces the layout; stale async results are dropped. */
 let generation = 0
 /** Bumped by every parse, valid or not. Tells a finished layout whether its text is current. */
@@ -99,12 +135,20 @@ let sourceVersion = 0
  * Newest valid model that is still waiting for its layout. Commands that start their own
  * layout (tidy up, detail level) continue with it instead of the model on screen.
  */
-let pendingModel: SchemaModel | null = null
+let pendingModel: PendingModel | null = null
+/** A rename made from the diagram; the selection follows the table to its new id. */
+let renameHint: { from: string; to: string } | null = null
 let parseTimer: ReturnType<typeof setTimeout> | undefined
 let animationTimer: ReturnType<typeof setTimeout> | undefined
+let spotlightTimer: ReturnType<typeof setTimeout> | undefined
 let undoSnapshot: LayoutSnapshot | null = null
 
 // ---------------------------------------------------------------- derived data
+
+function derive(full: SchemaModel, view: string | null): SchemaModel {
+  const { showEnums, suggestGroups } = useUi.getState()
+  return shownModel(full, { view, enums: showEnums, suggestGroups })
+}
 
 function computeBoxes(model: SchemaModel, detail: DetailLevel): Map<string, TableBox> {
   const refColumns = refColumnsByTable(model)
@@ -137,43 +181,78 @@ function structureSignature(
   return parts.join(';')
 }
 
+/** Relations that count as steps between tables. Enum links are decoration, not paths. */
+function relationGraph(model: SchemaModel): SchemaModel {
+  return { ...model, refs: model.refs.filter((r) => r.kind !== 'enum') }
+}
+
+function touches(ref: RefModel, tableId: string): boolean {
+  return ref.child.tableId === tableId || ref.parent.tableId === tableId
+}
+
 function computeEmphasis(
   model: SchemaModel,
   selectedTableId: string | null,
+  pathTargetId: string | null,
+  depth: FocusDepth,
   hover: Hover | null,
 ): Emphasis {
   if (!selectedTableId && !hover) return NO_EMPHASIS
 
   const refIds = new Set<string>()
   const columns = new Map<string, Set<string>>()
-  const focus = selectedTableId ? new Set([selectedTableId]) : null
-  const addColumns = (tableId: string, names: string[]) => {
-    const set = columns.get(tableId) ?? new Set<string>()
-    for (const name of names) set.add(name)
-    columns.set(tableId, set)
+  let focus: Set<string> | null = null
+  let path: string[] | null = null
+  const addRef = (ref: RefModel) => {
+    refIds.add(ref.id)
+    for (const end of [ref.child, ref.parent]) {
+      const names = columns.get(end.tableId) ?? new Set<string>()
+      for (const name of end.columns) names.add(name)
+      columns.set(end.tableId, names)
+    }
   }
 
-  for (const ref of model.refs) {
-    const touchesSelection =
-      selectedTableId !== null &&
-      (ref.child.tableId === selectedTableId || ref.parent.tableId === selectedTableId)
-    let hovered = false
-    if (hover?.kind === 'ref') hovered = hover.refId === ref.id
-    else if (hover?.kind === 'table') {
-      hovered = ref.child.tableId === hover.tableId || ref.parent.tableId === hover.tableId
-    } else if (hover?.kind === 'column') {
-      hovered = [ref.child, ref.parent].some(
-        (end) => end.tableId === hover.tableId && end.columns.includes(hover.column),
-      )
+  if (selectedTableId && pathTargetId && pathTargetId !== selectedTableId) {
+    path = shortestPath(relationGraph(model), selectedTableId, pathTargetId) ?? []
+    focus = new Set(path.length > 0 ? path : [selectedTableId, pathTargetId])
+    for (let step = 0; step < path.length - 1; step += 1) {
+      const a = path[step]!
+      const b = path[step + 1]!
+      for (const ref of model.refs) {
+        if (ref.kind !== 'enum' && touches(ref, a) && touches(ref, b)) addRef(ref)
+      }
     }
-    if (!touchesSelection && !hovered) continue
+  } else if (selectedTableId) {
+    const distance = withinSteps(relationGraph(model), selectedTableId, depth)
+    focus = new Set(distance.keys())
+    for (const ref of model.refs) {
+      if (ref.kind === 'enum') {
+        // Enum cards hang off the tables that use them; they never lead further.
+        if (!touches(ref, selectedTableId)) continue
+        addRef(ref)
+        focus.add(ref.child.tableId)
+        focus.add(ref.parent.tableId)
+        continue
+      }
+      const near = Math.min(
+        distance.get(ref.child.tableId) ?? Infinity,
+        distance.get(ref.parent.tableId) ?? Infinity,
+      )
+      if (near < depth) addRef(ref)
+    }
+  }
 
-    refIds.add(ref.id)
-    addColumns(ref.child.tableId, ref.child.columns)
-    addColumns(ref.parent.tableId, ref.parent.columns)
-    if (touchesSelection && focus) {
-      focus.add(ref.child.tableId)
-      focus.add(ref.parent.tableId)
+  if (hover) {
+    for (const ref of model.refs) {
+      let hovered = false
+      if (hover.kind === 'ref') hovered = hover.refId === ref.id
+      else if (hover.kind === 'table') hovered = touches(ref, hover.tableId)
+      else {
+        hovered = [ref.child, ref.parent].some(
+          (end) => end.tableId === hover.tableId && end.columns.includes(hover.column),
+        )
+      }
+      if (hovered) addRef(ref)
     }
   }
 
@@ -181,7 +260,24 @@ function computeEmphasis(
     refIds,
     columns: new Map([...columns].map(([id, names]) => [id, [...names].join('\n')])),
     focus,
+    path,
   }
+}
+
+function emphasisFor(
+  model: SchemaModel,
+  selectedTableId: string | null,
+  pathTargetId: string | null,
+  hover: Hover | null,
+): Emphasis {
+  return computeEmphasis(model, selectedTableId, pathTargetId, useUi.getState().focusDepth, hover)
+}
+
+/** Keeps a selection across a parse; a table renamed from the diagram keeps it too. */
+function carryOver(id: string | null, model: SchemaModel): string | null {
+  if (id === null) return null
+  const next = renameHint && renameHint.from === id ? renameHint.to : id
+  return model.tables.some((t) => t.id === next) ? next : null
 }
 
 // ---------------------------------------------------------------- layout
@@ -300,9 +396,77 @@ function reconcile(
   return placeMissing(model, boxes, kept)
 }
 
+function activeDocument(): DiagramDocument | undefined {
+  const { documents, activeId } = useDocuments.getState()
+  return documents[activeId]
+}
+
+/** The stored arrangement of one view of a document. */
+function layoutSlot(doc: DiagramDocument, view: string | null): ViewLayout {
+  if (view === null) return doc.layout
+  return getOwn(doc.layout.views ?? {}, view) ?? EMPTY_VIEW_LAYOUT
+}
+
 function persistLayout(): void {
-  const { positions, routes, signature, auto, detail } = get()
-  useDocuments.getState().saveLayout({ positions, routes, signature, auto, detail })
+  const { positions, routes, signature, auto, detail, view } = get()
+  const slot: ViewLayout = { positions, routes, signature, auto }
+  const documents = useDocuments.getState()
+  if (view === null) {
+    documents.saveLayout({ ...slot, detail, view })
+    return
+  }
+  const views = activeDocument()?.layout.views ?? {}
+  documents.saveLayout({ detail, view, views: { ...views, [view]: slot } })
+}
+
+/**
+ * Puts a model on screen with its saved arrangement when that still fits, otherwise with
+ * a fresh layout (automatic mode) or with the saved positions plus room for new tables.
+ * The patch is applied together with the result, so the canvas never shows a half state.
+ */
+async function restoreLayout(
+  model: SchemaModel,
+  detail: DetailLevel,
+  saved: ViewLayout,
+  token: number,
+  patch: Partial<DiagramState>,
+): Promise<boolean> {
+  const boxes = computeBoxes(model, detail)
+  const signature = structureSignature(model, boxes, detail)
+  const complete = model.tables.every((t) => getOwn(saved.positions, t.id))
+
+  if (saved.signature === signature && complete) {
+    set({
+      ...patch,
+      model,
+      boxes,
+      positions: saved.positions,
+      routes: saved.routes,
+      signature,
+      auto: saved.auto,
+      ready: true,
+    })
+    return true
+  }
+  if (saved.auto || Object.keys(saved.positions).length === 0) {
+    const result = await layoutAll(model, boxes)
+    if (token !== generation) return false
+    set({ ...patch, model, boxes, ...result, signature, auto: true, ready: true })
+  } else {
+    const positions = reconcile(model, boxes, saved.positions)
+    set({
+      ...patch,
+      model,
+      boxes,
+      positions,
+      routes: refreshRoutes(model, boxes, positions, saved.routes),
+      signature,
+      auto: false,
+      ready: true,
+    })
+  }
+  persistLayout()
+  return true
 }
 
 function startAnimation(): void {
@@ -341,15 +505,22 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
   if (parseTimer) clearTimeout(parseTimer)
   undoSnapshot = null
   pendingModel = null
+  renameHint = null
 
   const parsed = parseDbml(doc.source)
-  const model = parsed.model ?? EMPTY_MODEL
+  const full = parsed.model ?? EMPTY_MODEL
+  const view = doc.layout.view ?? null
+  const model = derive(full, view)
+  const saved = layoutSlot(doc, view)
   set({
+    fullModel: full,
     model,
     diagnostics: parsed.diagnostics,
+    hints: schemaHints(full),
     stale: parsed.model === null,
     detail: doc.layout.detail,
-    auto: doc.layout.auto,
+    auto: saved.auto,
+    view,
     boxes: new Map(),
     positions: {},
     routes: {},
@@ -358,9 +529,11 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
     animating: false,
     freshIds: new Set(),
     selectedTableId: null,
+    pathTargetId: null,
     cursorTableId: null,
     hover: null,
     emphasis: NO_EMPHASIS,
+    spotlight: null,
     canUndoArrange: false,
   })
 
@@ -370,38 +543,15 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
   if (parsed.model === null) {
     // Nothing can be drawn, but the saved layout must survive until the text is fixed.
     set({
-      positions: doc.layout.positions,
-      routes: doc.layout.routes,
-      signature: doc.layout.signature,
+      positions: saved.positions,
+      routes: saved.routes,
+      signature: saved.signature,
       ready: true,
     })
     return
   }
 
-  const { detail } = doc.layout
-  const boxes = computeBoxes(model, detail)
-  const signature = structureSignature(model, boxes, detail)
-  const saved = doc.layout.positions
-  const complete = model.tables.every((t) => getOwn(saved, t.id))
-
-  if (doc.layout.signature === signature && complete) {
-    set({ boxes, positions: saved, routes: doc.layout.routes, signature, ready: true })
-  } else if (doc.layout.auto || Object.keys(saved).length === 0) {
-    const result = await layoutAll(model, boxes)
-    if (token !== generation) return
-    set({ boxes, ...result, signature, auto: true, ready: true })
-    persistLayout()
-  } else {
-    set({
-      boxes,
-      positions: reconcile(model, boxes, saved),
-      routes: doc.layout.routes,
-      signature,
-      ready: true,
-    })
-    persistLayout()
-  }
-  fitContent(false)
+  if (await restoreLayout(model, doc.layout.detail, saved, token, {})) fitContent(false)
 }
 
 /** Called on every edit; parsing waits until typing pauses briefly. */
@@ -418,25 +568,27 @@ export function sourceChanged(source: string): void {
   }, PARSE_DELAY)
 }
 
-async function applyModel(model: SchemaModel, diagnostics: Diagnostic[]): Promise<void> {
+async function applyModel(full: SchemaModel, diagnostics: Diagnostic[]): Promise<void> {
   generation += 1
   const token = generation
   const version = sourceVersion
   const state = get()
   // The text is valid again right now, whatever happens to the layout below.
-  set({ diagnostics, stale: false })
+  set({ diagnostics, stale: false, fullModel: full, hints: schemaHints(full) })
 
+  const model = derive(full, state.view)
   const boxes = computeBoxes(model, state.detail)
   const signature = structureSignature(model, boxes, state.detail)
-  const selectedTableId = model.tables.some((t) => t.id === state.selectedTableId)
-    ? state.selectedTableId
-    : null
+  const selectedTableId = carryOver(state.selectedTableId, model)
+  const pathTargetId = selectedTableId ? carryOver(state.pathTargetId, model) : null
+  renameHint = null
   const shared = {
     model,
     boxes,
     selectedTableId,
+    pathTargetId,
     hover: null,
-    emphasis: computeEmphasis(model, selectedTableId, null),
+    emphasis: emphasisFor(model, selectedTableId, pathTargetId, null),
   }
 
   if (signature === state.signature) {
@@ -451,7 +603,7 @@ async function applyModel(model: SchemaModel, diagnostics: Diagnostic[]): Promis
   const freshIds = new Set(model.tables.filter((t) => !known.has(t.id)).map((t) => t.id))
 
   if (state.auto) {
-    pendingModel = model
+    pendingModel = { full, shown: model }
     const result = await layoutAll(model, boxes)
     if (token !== generation) return
     pendingModel = null
@@ -459,9 +611,11 @@ async function applyModel(model: SchemaModel, diagnostics: Diagnostic[]): Promis
     if (known.size > 0) startAnimation()
   } else {
     pendingModel = null
+    const positions = reconcile(model, boxes, state.positions, known)
     set({
       ...shared,
-      positions: reconcile(model, boxes, state.positions, known),
+      positions,
+      routes: refreshRoutes(model, boxes, positions, state.routes),
       signature,
       freshIds,
       ready: true,
@@ -474,6 +628,30 @@ async function applyModel(model: SchemaModel, diagnostics: Diagnostic[]): Promis
   refitIfUntouched()
 }
 
+/** The view options changed: show the same code under the new rules. */
+function refreshShown(): void {
+  const state = get()
+  if (!state.ready) return
+  const full = pendingModel?.full ?? state.fullModel
+  // Reuse the parse path; a failed parse never gets here because the model is kept.
+  void applyModel(full, state.diagnostics)
+}
+
+useUi.subscribe((ui, previous) => {
+  if (ui.showEnums !== previous.showEnums || ui.suggestGroups !== previous.suggestGroups) {
+    refreshShown()
+  }
+  if (ui.focusDepth !== previous.focusDepth) {
+    const { model, selectedTableId, pathTargetId, hover } = get()
+    set({ emphasis: emphasisFor(model, selectedTableId, pathTargetId, hover) })
+  }
+})
+
+/** Announces a rename made from the diagram, so the selection follows the table. */
+export function expectRename(from: string, to: string): void {
+  renameHint = { from, to }
+}
+
 export function setCursorOffset(offset: number | null): void {
   const { model, cursorTableId } = get()
   const table =
@@ -482,6 +660,34 @@ export function setCursorOffset(offset: number | null): void {
       : model.tables.find((t) => t.range.from <= offset && offset <= t.range.to)
   const next = table?.id ?? null
   if (next !== cursorTableId) set({ cursorTableId: next })
+}
+
+// ---------------------------------------------------------------- views
+
+/** Switches to a DiagramView (or back to everything). Each view keeps its own arrangement. */
+export async function setView(view: string | null): Promise<void> {
+  const state = get()
+  if (view === state.view || !state.ready) return
+  generation += 1
+  const token = generation
+  const doc = activeDocument()
+  const full = pendingModel?.full ?? state.fullModel
+  pendingModel = null
+  forgetUndo()
+
+  const model = derive(full, view)
+  const selectedTableId = carryOver(state.selectedTableId, model)
+  const patch: Partial<DiagramState> = {
+    view,
+    selectedTableId,
+    pathTargetId: null,
+    hover: null,
+    emphasis: emphasisFor(model, selectedTableId, null, null),
+  }
+  const saved = doc ? layoutSlot(doc, view) : EMPTY_VIEW_LAYOUT
+  if (!(await restoreLayout(model, state.detail, saved, token, patch))) return
+  startAnimation()
+  fitContent(true)
 }
 
 // ---------------------------------------------------------------- layout commands
@@ -493,7 +699,7 @@ async function relayout(detail: DetailLevel, remember: boolean): Promise<boolean
   if (!state.ready) return false
   generation += 1
   const token = generation
-  const model = pendingModel ?? state.model
+  const model = pendingModel?.shown ?? state.model
   const boxes = computeBoxes(model, detail)
   const snapshot: LayoutSnapshot = {
     positions: state.positions,
@@ -506,9 +712,8 @@ async function relayout(detail: DetailLevel, remember: boolean): Promise<boolean
   if (token !== generation) return false
 
   pendingModel = null
-  const selectedTableId = model.tables.some((t) => t.id === state.selectedTableId)
-    ? state.selectedTableId
-    : null
+  const selectedTableId = carryOver(state.selectedTableId, model)
+  const pathTargetId = selectedTableId ? carryOver(state.pathTargetId, model) : null
   // The snapshot only describes the model that was on screen when the command started.
   undoSnapshot = remember && model === state.model && detail === state.detail ? snapshot : null
   set({
@@ -519,7 +724,8 @@ async function relayout(detail: DetailLevel, remember: boolean): Promise<boolean
     signature: structureSignature(model, boxes, detail),
     auto: true,
     selectedTableId,
-    emphasis: computeEmphasis(model, selectedTableId, null),
+    pathTargetId,
+    emphasis: emphasisFor(model, selectedTableId, pathTargetId, null),
     hover: null,
     canUndoArrange: undoSnapshot !== null,
   })
@@ -553,7 +759,12 @@ export async function setDetail(detail: DetailLevel): Promise<void> {
   // Hand-placed tables keep their position; only their size changes.
   const boxes = computeBoxes(state.model, detail)
   forgetUndo()
-  set({ detail, boxes, signature: structureSignature(state.model, boxes, detail) })
+  set({
+    detail,
+    boxes,
+    routes: refreshRoutes(state.model, boxes, state.positions, state.routes),
+    signature: structureSignature(state.model, boxes, detail),
+  })
   persistLayout()
 }
 
@@ -571,7 +782,9 @@ export function moveTables(next: Record<string, Point>): void {
 
 /** Dragging hands control of the arrangement to the user. */
 export function endDrag(): void {
-  if (get().auto) set({ auto: false })
+  const { model, boxes, positions, routes } = get()
+  // Lines of moved tables, and lines a table was dropped onto, find a new way round.
+  set({ auto: false, routes: refreshRoutes(model, boxes, positions, routes) })
   forgetUndo()
   persistLayout()
 }
@@ -579,13 +792,47 @@ export function endDrag(): void {
 export function selectTable(tableId: string | null): void {
   const { model, hover, selectedTableId } = get()
   if (tableId === selectedTableId) return
-  set({ selectedTableId: tableId, emphasis: computeEmphasis(model, tableId, hover) })
+  // A new starting point ends the previous path question.
+  set({
+    selectedTableId: tableId,
+    pathTargetId: null,
+    emphasis: emphasisFor(model, tableId, null, hover),
+  })
+}
+
+/** Asks how the selected table reaches another one; the shortest chain lights up. */
+export function setPathTarget(tableId: string | null): void {
+  const { model, hover, selectedTableId, pathTargetId, boxes, positions } = get()
+  if (!selectedTableId || tableId === pathTargetId) return
+  const target = tableId === selectedTableId ? null : tableId
+  const emphasis = emphasisFor(model, selectedTableId, target, hover)
+  set({ pathTargetId: target, emphasis })
+  if (!target) return
+  // Bring the whole chain into view, or at least both ends when there is none.
+  const ids = emphasis.path && emphasis.path.length > 0 ? emphasis.path : [selectedTableId, target]
+  const area = bounds(
+    ids.flatMap((id) => {
+      const rect = tableRect({ id }, boxes, positions)
+      return rect ? [rect] : []
+    }),
+  )
+  if (area) frameRect(area, { insets: insetsFor(true) })
 }
 
 export function setHover(hover: Hover | null): void {
   const state = get()
   if (sameHover(state.hover, hover)) return
-  set({ hover, emphasis: computeEmphasis(state.model, state.selectedTableId, hover) })
+  set({
+    hover,
+    emphasis: emphasisFor(state.model, state.selectedTableId, state.pathTargetId, hover),
+  })
+}
+
+/** Flashes a column found by search, on the card and in the details. */
+export function spotlightColumn(spotlight: Spotlight | null): void {
+  if (spotlightTimer) clearTimeout(spotlightTimer)
+  set({ spotlight })
+  if (spotlight) spotlightTimer = setTimeout(() => set({ spotlight: null }), SPOTLIGHT_MS)
 }
 
 function sameHover(a: Hover | null, b: Hover | null): boolean {

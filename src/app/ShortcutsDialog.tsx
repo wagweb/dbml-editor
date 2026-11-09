@@ -1,4 +1,4 @@
-import { shortcutLabel } from '@/lib/platform'
+import { Kbd } from '@/ui/Kbd'
 import { useUi } from '@/store/ui'
 import { Dialog } from '@/ui/Dialog'
 
@@ -6,9 +6,11 @@ const SECTIONS: { title: string; items: [keys: string, description: string][] }[
   {
     title: 'Anywhere',
     items: [
-      ['mod+K', 'Search tables and actions'],
+      ['mod+K', 'Search tables, columns and actions'],
       ['mod+\\', 'Show or hide the code'],
-      ['mod+Z', 'Undo a deleted diagram or a tidy up'],
+      ['mod+O', 'Open a DBML file'],
+      ['mod+S', 'Save to the file'],
+      ['mod+Z', 'Undo a deleted diagram, a tidy up or an edit made in the diagram'],
     ],
   },
   {
@@ -24,8 +26,10 @@ const SECTIONS: { title: string; items: [keys: string, description: string][] }[
       ['shift+A', 'Tidy up the layout'],
       ['Tab', 'Step through the tables'],
       ['Enter', 'Open the details of the focused table'],
+      ['F2', 'Rename the focused table'],
+      ['shift+Click', 'Show the path from the selected table to the clicked one'],
       ['shift+Arrow', 'Move the focused table'],
-      ['Esc', 'Close the details'],
+      ['Esc', 'Clear the path, then close the details'],
       ['?', 'Show this list'],
     ],
   },
@@ -65,12 +69,7 @@ export function ShortcutsDialog() {
                   <dt className="flex-1 text-[13px] text-ink">{description}</dt>
                   <dd className="flex gap-1">
                     {keys.split(' ').map((key) => (
-                      <kbd
-                        key={key}
-                        className="rounded bg-fill px-1.5 py-0.5 font-mono text-[11px] text-ink-2"
-                      >
-                        {shortcutLabel(key)}
-                      </kbd>
+                      <Kbd key={key} shortcut={key} />
                     ))}
                   </dd>
                 </div>

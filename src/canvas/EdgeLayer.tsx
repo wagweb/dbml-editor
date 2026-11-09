@@ -2,7 +2,11 @@ import { memo, useMemo } from 'react'
 import type { RefModel } from '@/dbml/model'
 import { revealInEditor } from '@/editor/bridge'
 import { computeEdges, type EdgeGeometry } from '@/layout/edges'
+import { GEOMETRY, portOffsetY } from '@/layout/geometry'
+import { roundedPath } from '@/layout/router'
+import { getOwn } from '@/lib/record'
 import { setHover, useDiagram } from '@/store/diagram'
+import { useLinkDrag } from './linkDrag'
 
 /** All relations as one SVG below the tables. Highlighted relations are painted last. */
 export function EdgeLayer() {
@@ -42,6 +46,7 @@ export function EdgeLayer() {
           />
         )
       })}
+      <LinkPreview />
     </svg>
   )
 }
@@ -60,6 +65,7 @@ const Edge = memo(
         className="edge"
         data-active={active}
         data-dimmed={dimmed}
+        data-kind={reference.kind}
         data-ref-id={edge.refId}
         data-canvas-interactive
         onPointerEnter={() => setHover({ kind: 'ref', refId: edge.refId })}
@@ -69,7 +75,7 @@ const Edge = memo(
         <path className="edge-hit" d={edge.path} />
         <path className="edge-line" d={edge.path} />
         <path className="edge-marker" d={edge.markers} />
-        {active && (
+        {active && reference.kind !== 'enum' && (
           <path
             className="edge-flow"
             d={edge.path}
@@ -90,3 +96,43 @@ const Edge = memo(
     a.dimmed === b.dimmed &&
     a.reference === b.reference,
 )
+
+/** The relation being dragged from a column: a line from its row to the pointer. */
+function LinkPreview() {
+  const from = useLinkDrag((s) => s.from)
+  const pointer = useLinkDrag((s) => s.pointer)
+  const target = useLinkDrag((s) => s.target)
+  const boxes = useDiagram((s) => s.boxes)
+  const positions = useDiagram((s) => s.positions)
+  if (!from || !pointer) return null
+
+  const box = boxes.get(from.tableId)
+  const position = getOwn(positions, from.tableId)
+  if (!box || !position) return null
+  const startY = position.y + portOffsetY(box, from.column)
+
+  // Snap to the row under the pointer, so the drop target is unmistakable.
+  const targetBox = target && boxes.get(target.tableId)
+  const targetPosition = target && getOwn(positions, target.tableId)
+  const end =
+    targetBox && targetPosition
+      ? {
+          x:
+            pointer.x < targetPosition.x + targetBox.width / 2
+              ? targetPosition.x
+              : targetPosition.x + targetBox.width,
+          y: targetPosition.y + portOffsetY(targetBox, target.column),
+        }
+      : pointer
+  const leavesRight = end.x >= position.x + box.width / 2
+  const start = { x: leavesRight ? position.x + box.width : position.x, y: startY }
+  const midX = (start.x + end.x) / 2
+  const points = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]
+
+  return (
+    <g className="edge edge-preview" data-snapped={target !== null}>
+      <path className="edge-line" d={roundedPath(points, GEOMETRY.grid)} />
+      <circle className="edge-preview-end" cx={end.x} cy={end.y} r={4} />
+    </g>
+  )
+}

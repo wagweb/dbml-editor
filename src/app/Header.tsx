@@ -12,10 +12,10 @@ import {
   SlidersHorizontal,
   Workflow,
 } from 'lucide-react'
-import { shortcutLabel } from '@/lib/platform'
 import type { DetailLevel } from '@/layout/geometry'
 import { useUi, type ThemePreference } from '@/store/ui'
 import { Button, IconButton } from '@/ui/Button'
+import { Kbd } from '@/ui/Kbd'
 import { setDetail, useDiagram } from '@/store/diagram'
 import {
   Menu,
@@ -39,6 +39,9 @@ export function Header({ mobile }: { mobile: boolean }) {
   const mobileView = useUi((s) => s.mobileView)
   const detail = useDiagram((s) => s.detail)
   const minimapOpen = useUi((s) => s.minimapOpen)
+  const showEnums = useUi((s) => s.showEnums)
+  const suggestGroups = useUi((s) => s.suggestGroups)
+  const showHints = useUi((s) => s.showHints)
   const { toggleEditor, setCommandOpen, openDialog, setMobileView, setTheme } = useUi.getState()
 
   return (
@@ -65,7 +68,7 @@ export function Header({ mobile }: { mobile: boolean }) {
       )}
 
       <div className="flex items-center gap-2 pr-1 pl-1.5 select-none max-sm:hidden">
-        <Logo className="size-5 text-ink" />
+        <Logo className="size-[22px]" />
         <span className="text-sm font-semibold tracking-tight text-ink">{APP_NAME}</span>
       </div>
       <span aria-hidden className="px-0.5 text-lg font-light text-line-strong max-sm:hidden">
@@ -75,14 +78,18 @@ export function Header({ mobile }: { mobile: boolean }) {
 
       <div className="flex-1" />
 
+      {/* Looks like a field, opens the search palette. */}
       <button
         type="button"
-        className="mr-1 flex h-8 w-56 items-center gap-2 rounded-control bg-fill px-2.5 text-[13px] text-ink-2 transition-colors duration-100 hover:bg-fill-strong hover:text-ink max-lg:hidden"
+        className="mr-1 flex h-8 w-64 cursor-text items-center gap-2 rounded-control bg-fill pr-1.5 pl-2.5 text-[13px] text-ink-3 shadow-[inset_0_0_0_1px_var(--line)] transition-[color,box-shadow] duration-100 hover:text-ink-2 hover:shadow-[inset_0_0_0_1px_var(--line-strong)] max-lg:hidden"
         onClick={() => setCommandOpen(true)}
       >
-        <Search aria-hidden className="size-3.5" />
-        <span className="flex-1 text-left">Search tables and actions</span>
-        <kbd className="font-mono text-[11px] text-ink-3">{shortcutLabel('mod+K')}</kbd>
+        <Search aria-hidden className="size-[15px] shrink-0" strokeWidth={1.75} />
+        {/* Trimmed to cap height: the label is centred on its letters, not on its line box. */}
+        <span className="flex-1 text-left whitespace-nowrap [text-box:trim-both_cap_alphabetic]">
+          Search tables and actions
+        </span>
+        <Kbd shortcut="mod+K" />
       </button>
       <IconButton
         label="Search tables and actions"
@@ -121,12 +128,31 @@ export function Header({ mobile }: { mobile: boolean }) {
           </MenuRadioGroup>
           <MenuSeparator />
           <MenuCheckItem
+            checked={showEnums}
+            onCheckedChange={(next) => useUi.getState().setShowEnums(next === true)}
+          >
+            Enums as cards
+          </MenuCheckItem>
+          <MenuCheckItem
+            checked={suggestGroups}
+            onCheckedChange={(next) => useUi.getState().setSuggestGroups(next === true)}
+          >
+            Suggest groups
+          </MenuCheckItem>
+          <MenuCheckItem
+            checked={showHints}
+            onCheckedChange={(next) => useUi.getState().setShowHints(next === true)}
+          >
+            Schema hints
+          </MenuCheckItem>
+          <MenuCheckItem
             checked={minimapOpen}
             onCheckedChange={() => useUi.getState().toggleMinimap()}
             className="max-md:hidden"
           >
             Overview map
           </MenuCheckItem>
+          <MenuSeparator />
           <MenuItem icon={<Keyboard />} shortcut="?" onSelect={() => openDialog('shortcuts')}>
             Keyboard shortcuts
           </MenuItem>

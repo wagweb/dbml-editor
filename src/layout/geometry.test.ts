@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { shownModel } from '@/dbml/derive'
 import { parseDbml } from '@/dbml/parse'
 import {
   approximateMeasure,
   computeTableBox,
   GEOMETRY,
+  NOTE,
   portOffsetY,
   refColumnsByTable,
+  wrapText,
 } from './geometry'
 
 const model = parseDbml(`
@@ -121,5 +124,84 @@ describe('portOffsetY', () => {
   it('falls back to the header when the column is not shown', () => {
     expect(portOffsetY(box('users', 'names'), 'id')).toBe(GEOMETRY.headerHeight / 2)
     expect(portOffsetY(box('users', 'full'), 'unknown')).toBe(GEOMETRY.headerHeight / 2)
+  })
+})
+
+describe('enum and note cards', () => {
+  const shown = shownModel(
+    parseDbml(`
+Table users {
+  id int [pk]
+  status user_status
+}
+Enum user_status {
+  active
+  blocked
+  deleted_but_with_a_rather_long_value_name
+}
+Note reminder {
+  'Money is stored in cents as integers. Timestamps are UTC and never local time.'
+}
+`).model!,
+    { view: null, enums: true, suggestGroups: false },
+  )
+  const card = (id: string, detail: Parameters<typeof computeTableBox>[1]) =>
+    computeTableBox(
+      shown.tables.find((t) => t.id === id)!,
+      detail,
+      approximateMeasure,
+      new Set(),
+    )
+
+  it('lists enum values like rows and folds them into a count when zoomed to keys', () => {
+    const full = card('enum:user_status', 'full')
+    expect(full.rows.map((r) => r.name)).toEqual([
+      'active',
+      'blocked',
+      'deleted_but_with_a_rather_long_value_name',
+    ])
+    expect(full.height).toBe(GEOMETRY.headerHeight + 2 * GEOMETRY.bodyPadY + 3 * GEOMETRY.rowHeight)
+    expect(full.width % GEOMETRY.widthStep).toBe(0)
+
+    const keys = card('enum:user_status', 'keys')
+    expect(keys.rows).toEqual([])
+    expect(keys.hiddenCount).toBe(3)
+    expect(keys.height).toBe(GEOMETRY.headerHeight + 2 * GEOMETRY.bodyPadY + GEOMETRY.footerHeight)
+
+    expect(card('enum:user_status', 'names').height).toBe(GEOMETRY.headerHeight)
+  })
+
+  it('wraps note text into measured lines and sizes the card to them', () => {
+    const note = card('note:reminder', 'full')
+    expect(note.width).toBe(NOTE.width)
+    expect(note.lines!.length).toBeGreaterThan(1)
+    expect(note.lines!.join(' ')).toBe(
+      'Money is stored in cents as integers. Timestamps are UTC and never local time.',
+    )
+    for (const line of note.lines!) {
+      expect(approximateMeasure(line, 'text')).toBeLessThanOrEqual(NOTE.width - 2 * GEOMETRY.padX)
+    }
+    expect(note.height).toBe(
+      2 * NOTE.padY + NOTE.captionHeight + 4 + note.lines!.length * NOTE.lineHeight,
+    )
+    // The detail level does not apply to notes.
+    expect(card('note:reminder', 'names')).toEqual(note)
+  })
+})
+
+describe('wrapText', () => {
+  it('keeps paragraphs, drops trailing blank lines and caps the number of lines', () => {
+    const lines = wrapText('one two\n\nthree\n', 1000, approximateMeasure, 10)
+    expect(lines).toEqual(['one two', '', 'three'])
+    expect(wrapText('', 100, approximateMeasure, 3)).toEqual([])
+    const capped = wrapText('a b c d e f g h', 20, approximateMeasure, 3)
+    expect(capped).toHaveLength(3)
+    expect(capped[2]!.endsWith('…')).toBe(true)
+  })
+
+  it('lets a single word exceed the width instead of breaking it', () => {
+    expect(wrapText('supercalifragilistic', 20, approximateMeasure, 3)).toEqual([
+      'supercalifragilistic',
+    ])
   })
 })

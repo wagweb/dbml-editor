@@ -7,6 +7,7 @@ import { ShortcutsDialog } from '@/app/ShortcutsDialog'
 import { Splitter } from '@/app/Splitter'
 import { SqlExportDialog, SqlImportDialog } from '@/app/SqlDialogs'
 import { StatusBar } from '@/app/StatusBar'
+import { checkFileOnDisk, openFile, saveFile } from '@/app/fileActions'
 import { Canvas } from '@/canvas/Canvas'
 import { CodeEditor } from '@/editor/CodeEditor'
 import { isEditableTarget } from '@/lib/platform'
@@ -43,6 +44,17 @@ function useGlobalShortcuts(): void {
       if (mod && event.key === '\\') {
         event.preventDefault()
         ui.toggleEditor()
+        return
+      }
+      // The browser's own open and save dialogs are no use here.
+      if (mod && event.key.toLowerCase() === 'o' && !event.shiftKey && !event.altKey) {
+        event.preventDefault()
+        void openFile()
+        return
+      }
+      if (mod && event.key.toLowerCase() === 's' && !event.altKey) {
+        event.preventDefault()
+        void saveFile({ as: event.shiftKey })
         return
       }
       // Undo for the action a message offers (delete diagram, tidy up). The editor keeps
@@ -128,6 +140,19 @@ export default function App() {
   useEffect(() => {
     document.title = name ? `${name} | ${APP_NAME}` : APP_NAME
   }, [name])
+
+  // A file linked to the open diagram may have changed while the window was in the background.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'visible') void checkFileOnDisk()
+    }
+    window.addEventListener('focus', check)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      window.removeEventListener('focus', check)
+      document.removeEventListener('visibilitychange', check)
+    }
+  }, [])
 
   const showEditor = mobile ? mobileView === 'code' : editorOpen
   const showCanvas = !mobile || mobileView === 'diagram'

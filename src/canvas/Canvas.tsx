@@ -6,12 +6,13 @@ import { refColumnsByTable } from '@/layout/geometry'
 import { tableTones } from '@/layout/groups'
 import { fitContent, useDiagram } from '@/store/diagram'
 import { useUi } from '@/store/ui'
-import { FAR_ZOOM, useViewport } from '@/store/viewport'
+import { FAR_ZOOM, OVERVIEW_ZOOM, useViewport } from '@/store/viewport'
 import { Button } from '@/ui/Button'
+import { CanvasChips } from './CanvasChips'
 import { CanvasToolbar } from './CanvasToolbar'
 import { EdgeLayer } from './EdgeLayer'
 import { EdgeTooltip } from './EdgeTooltip'
-import { GroupLayer } from './GroupLayer'
+import { GroupLayer, GroupOverviewLabels } from './GroupLayer'
 import { Inspector } from './Inspector'
 import { Minimap } from './Minimap'
 import { TableNode } from './TableNode'
@@ -46,14 +47,15 @@ export const Canvas = memo(function Canvas() {
       const grid = gridRef.current
       if (!world || !grid) return
       world.style.transform = `translate(${x}px, ${y}px) scale(${k})`
-      const lod = k < FAR_ZOOM ? 'far' : 'near'
+      const lod = k < OVERVIEW_ZOOM ? 'overview' : k < FAR_ZOOM ? 'far' : 'near'
       if (world.dataset.lod !== lod) world.dataset.lod = lod
 
-      // Labels that grow when zoomed out. A custom property restyles every element below
-      // the world, so it is only written when the rounded value actually changes.
-      const lodFont = `${clamp(Math.round(11.5 / k), 13, 72)}px`
+      // World size a label needs to read as about 11.5px on screen. Labels use it up to
+      // the size that still fits their box. A custom property restyles everything below
+      // the world, so it is only written when the rounded value changes.
+      const need = String(Math.round(11.5 / k))
       const groupFont = `${clamp(Math.round(10.5 / k), 12, 28)}px`
-      if (fonts.lod !== lodFont) world.style.setProperty('--lod-font', (fonts.lod = lodFont))
+      if (fonts.lod !== need) world.style.setProperty('--lod-need', (fonts.lod = need))
       if (fonts.group !== groupFont) {
         world.style.setProperty('--group-font', (fonts.group = groupFont))
       }
@@ -105,13 +107,16 @@ export const Canvas = memo(function Canvas() {
       keys.set(
         table.id,
         [
+          table.kind,
           table.schema,
           table.name,
+          table.groupId,
           table.columns.length,
           Boolean(table.note),
           box?.width,
           box?.height,
           box?.hiddenCount,
+          box?.lines?.join('\n'),
           [...(refColumns.get(table.id) ?? [])].join(','),
           columns.join('|'),
         ].join('\u0000'),
@@ -132,7 +137,8 @@ export const Canvas = memo(function Canvas() {
     >
       <p id="canvas-help" className="sr-only">
         Arrow keys move the view, plus and minus zoom, 1 fits the diagram. Tab steps through the
-        tables. On a table, Enter opens its details and Shift with an arrow key moves it.
+        tables. On a table, Enter opens its details, F2 renames it and Shift with an arrow key moves
+        it.
       </p>
       {/* Said aloud when the code breaks; the visible notice below may mount too late. */}
       <p role="status" className="sr-only">
@@ -141,6 +147,7 @@ export const Canvas = memo(function Canvas() {
       <div ref={gridRef} className="canvas-grid" />
 
       {/* Controls come before the tables in the tab order, whatever the diagram's size. */}
+      <CanvasChips />
       <CanvasToolbar />
       <Inspector />
 
@@ -164,6 +171,7 @@ export const Canvas = memo(function Canvas() {
                 />
               )
             })}
+            <GroupOverviewLabels />
           </>
         )}
       </div>

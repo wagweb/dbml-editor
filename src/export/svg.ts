@@ -2,7 +2,7 @@ import type { SchemaModel } from '@/dbml/model'
 import { getOwn } from '@/lib/record'
 import { computeEdges } from '@/layout/edges'
 import type { StoredRoute } from '@/layout/elk'
-import { GEOMETRY, tableTitle, type TableBox } from '@/layout/geometry'
+import { GEOMETRY, NOTE, tableTitle, type TableBox } from '@/layout/geometry'
 import { contentBounds, groupRegions, tableTones } from '@/layout/groups'
 import type { Point } from '@/layout/router'
 
@@ -16,6 +16,8 @@ export interface SvgPalette {
   ink2: string
   ink3: string
   edge: string
+  /** Paper of a sticky note. */
+  note: string
 }
 
 export const LIGHT_PALETTE: SvgPalette = {
@@ -28,6 +30,7 @@ export const LIGHT_PALETTE: SvgPalette = {
   ink2: '#525252',
   ink3: '#6b6b6b',
   edge: '#8a8a8a',
+  note: '#fbf6e4',
 }
 
 export const DARK_PALETTE: SvgPalette = {
@@ -40,6 +43,7 @@ export const DARK_PALETTE: SvgPalette = {
   ink2: '#a8a8a8',
   ink3: '#8c8c8c',
   edge: '#5c5c5c',
+  note: '#1c1910',
 }
 
 export interface SvgExportInput {
@@ -85,17 +89,22 @@ export function renderSvg(input: SvgExportInput): SvgExport {
 
   for (const region of groupRegions(model, boxes, positions)) {
     const { rect, tone, group } = region
+    // Suggested groups are dashed, as on the canvas: they are not in the code.
+    const dash = group.suggested ? ' stroke-dasharray="6 5"' : ''
     parts.push(
-      `<rect x="${rect.x + 0.5}" y="${rect.y + 0.5}" width="${rect.width - 1}" height="${rect.height - 1}" rx="14" fill="${tone}" fill-opacity="0.05" stroke="${tone}" stroke-opacity="0.28"/>`,
+      `<rect x="${rect.x + 0.5}" y="${rect.y + 0.5}" width="${rect.width - 1}" height="${rect.height - 1}" rx="14" fill="${tone}" fill-opacity="0.05" stroke="${tone}" stroke-opacity="0.28"${dash}/>`,
       `<text x="${rect.x + 14}" y="${rect.y + 23}" font-size="12" font-weight="600" fill="${tone}">${escapeXml(group.name)}</text>`,
     )
   }
 
+  const kindOf = new Map(model.refs.map((ref) => [ref.id, ref.kind]))
   parts.push(
     `<g fill="none" stroke="${palette.edge}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">`,
   )
   for (const edge of computeEdges(model, boxes, positions, routes)) {
-    parts.push(`<path d="${edge.path}"/><path d="${edge.markers}"/>`)
+    const dash = kindOf.get(edge.refId) === 'enum' ? ' stroke-dasharray="3 4"' : ''
+    parts.push(`<path d="${edge.path}"${dash}/>`)
+    if (edge.markers) parts.push(`<path d="${edge.markers}"/>`)
   }
   parts.push('</g>')
 
@@ -104,6 +113,11 @@ export function renderSvg(input: SvgExportInput): SvgExport {
     const position = getOwn(positions, table.id)
     if (!box || !position) return
     const { x, y } = position
+    if (table.kind === 'note') {
+      parts.push(noteCard(table.name, box, x, y, palette))
+      return
+    }
+    const isEnum = table.kind === 'enum'
     const tone = tones.get(table.id)
     const headerOnly = box.height === GEOMETRY.headerHeight
     // Index based: two table names can map to the same sanitised id.
@@ -129,12 +143,23 @@ export function renderSvg(input: SvgExportInput): SvgExport {
     parts.push(
       `</g>`,
       `<rect x="${x + 0.5}" y="${y + 0.5}" width="${box.width - 1}" height="${box.height - 1}" rx="7.5" fill="none" stroke="${palette.lineStrong}"/>`,
-      `<text x="${x + GEOMETRY.padX}" y="${y + GEOMETRY.headerHeight / 2 + 4.5}" font-size="13" font-weight="600" fill="${palette.ink}">${escapeXml(fit(tableTitle(table), box.width - 2 * GEOMETRY.padX, 7.4))}</text>`,
+      `<text x="${x + GEOMETRY.padX}" y="${y + GEOMETRY.headerHeight / 2 + 4.5}" font-size="13" font-weight="600" fill="${palette.ink}">${escapeXml(fit(tableTitle(table), box.width - 2 * GEOMETRY.padX - (isEnum ? 36 : 0), 7.4))}</text>`,
     )
+    if (isEnum) {
+      parts.push(
+        `<text x="${x + box.width - GEOMETRY.padX}" y="${y + GEOMETRY.headerHeight / 2 + 4}" font-size="10.5" font-weight="500" text-anchor="end" fill="${palette.ink2}">enum</text>`,
+      )
+    }
 
     box.rows.forEach((column, index) => {
       const rowY = y + GEOMETRY.headerHeight + GEOMETRY.bodyPadY + index * GEOMETRY.rowHeight
       const baseline = rowY + GEOMETRY.rowHeight / 2 + 4
+      if (isEnum) {
+        parts.push(
+          `<text x="${x + GEOMETRY.padX}" y="${baseline}" font-family="${MONO}" font-size="12" fill="${palette.ink}">${escapeXml(column.name)}</text>`,
+        )
+        return
+      }
       const nameX = x + GEOMETRY.padX + GEOMETRY.iconSlot
       if (column.pk)
         parts.push(keyGlyph(x + GEOMETRY.padX, rowY + GEOMETRY.rowHeight / 2, palette.ink))
@@ -151,7 +176,7 @@ export function renderSvg(input: SvgExportInput): SvgExport {
       const footerY =
         y + GEOMETRY.headerHeight + GEOMETRY.bodyPadY + box.rows.length * GEOMETRY.rowHeight
       parts.push(
-        `<text x="${x + GEOMETRY.padX}" y="${footerY + GEOMETRY.footerHeight / 2 + 4}" font-size="11.5" fill="${palette.ink3}">${hiddenLabel(box.hiddenCount, box.rows.length)}</text>`,
+        `<text x="${x + GEOMETRY.padX}" y="${footerY + GEOMETRY.footerHeight / 2 + 4}" font-size="11.5" fill="${palette.ink3}">${hiddenLabel(box.hiddenCount, box.rows.length, isEnum ? 'value' : 'column')}</text>`,
       )
     }
     parts.push('</g>')
@@ -161,8 +186,26 @@ export function renderSvg(input: SvgExportInput): SvgExport {
   return { svg: parts.join(''), width, height }
 }
 
-export function hiddenLabel(hidden: number, shown: number): string {
-  const noun = hidden === 1 ? 'column' : 'columns'
+/** A sticky note: tinted paper, the name as a caption, then the wrapped text. */
+function noteCard(name: string, box: TableBox, x: number, y: number, palette: SvgPalette): string {
+  const parts = [
+    `<g>`,
+    `<rect x="${x}" y="${y}" width="${box.width}" height="${box.height}" rx="8" fill="${palette.note}"/>`,
+    `<rect x="${x + 0.5}" y="${y + 0.5}" width="${box.width - 1}" height="${box.height - 1}" rx="7.5" fill="none" stroke="${palette.lineStrong}"/>`,
+    `<text x="${x + GEOMETRY.padX}" y="${y + NOTE.padY + NOTE.captionHeight / 2 + 3.5}" font-size="11" font-weight="500" fill="${palette.ink3}">${escapeXml(fit(name, box.width - 2 * GEOMETRY.padX, 6.3))}</text>`,
+  ]
+  const top = y + NOTE.padY + NOTE.captionHeight + 4
+  ;(box.lines ?? []).forEach((line, index) => {
+    parts.push(
+      `<text x="${x + GEOMETRY.padX}" y="${top + index * NOTE.lineHeight + NOTE.lineHeight / 2 + 4.5}" font-size="13" fill="${palette.ink2}">${escapeXml(line)}</text>`,
+    )
+  })
+  parts.push('</g>')
+  return parts.join('')
+}
+
+export function hiddenLabel(hidden: number, shown: number, word = 'column'): string {
+  const noun = hidden === 1 ? word : `${word}s`
   return shown === 0 ? `${hidden} ${noun}` : `${hidden} more ${noun}`
 }
 

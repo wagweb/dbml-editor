@@ -28,9 +28,11 @@ import {
   placeholder,
 } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
+import type { Hint } from '@/dbml/hints'
 import { completeDbml, type DbmlCompletion, type Diagnostic } from '@/dbml/parse'
 import { setCursorOffset, sourceChanged, useDiagram } from '@/store/diagram'
 import { useDocuments } from '@/store/documents'
+import { useUi } from '@/store/ui'
 import { flashField, registerEditor } from './bridge'
 import { dbml } from './dbmlLanguage'
 
@@ -77,13 +79,18 @@ function completions(context: CompletionContext): CompletionResult | null {
   }
 }
 
-function toCmDiagnostics(diagnostics: Diagnostic[], length: number): CmDiagnostic[] {
-  return diagnostics.map((d) => {
-    const from = Math.min(d.from, length)
+function toCmDiagnostics(diagnostics: Diagnostic[], hints: Hint[], length: number): CmDiagnostic[] {
+  const clamp = (range: { from: number; to: number }) => {
+    const from = Math.min(range.from, length)
     // Give empty ranges one character so there is something to underline.
-    const to = Math.min(Math.max(d.to, from + 1), length)
-    return { from: Math.min(from, to), to, severity: d.severity, message: d.message }
-  })
+    const to = Math.min(Math.max(range.to, from + 1), length)
+    return { from: Math.min(from, to), to }
+  }
+  return [
+    ...diagnostics.map((d) => ({ ...clamp(d), severity: d.severity, message: d.message })),
+    // Hints are advice, shown quietly; they never count as problems.
+    ...hints.map((h) => ({ ...clamp(h.range), severity: 'info' as const, message: h.message })),
+  ]
 }
 
 const extensions: Extension[] = [
@@ -145,6 +152,8 @@ export function CodeEditor() {
   const activeId = useDocuments((s) => s.activeId)
   const externalRevision = useDocuments((s) => s.externalRevision)
   const diagnostics = useDiagram((s) => s.diagnostics)
+  const hints = useDiagram((s) => s.hints)
+  const showHints = useUi((s) => s.showHints)
 
   useEffect(() => {
     if (!host.current) return
@@ -168,8 +177,11 @@ export function CodeEditor() {
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-    view.dispatch(setDiagnostics(view.state, toCmDiagnostics(diagnostics, view.state.doc.length)))
-  }, [diagnostics, activeId])
+    const shownHints = showHints && diagnostics.length === 0 ? hints : []
+    view.dispatch(
+      setDiagnostics(view.state, toCmDiagnostics(diagnostics, shownHints, view.state.doc.length)),
+    )
+  }, [diagnostics, hints, showHints, activeId])
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />
 }
