@@ -6,6 +6,8 @@ export const MIN_ZOOM = 0.08
 export const MAX_ZOOM = 2.5
 /** Below this zoom the columns are unreadable and tables switch to a large name label. */
 export const FAR_ZOOM = 0.5
+/** Below this even table names are too small; groups are labelled instead. */
+export const OVERVIEW_ZOOM = 0.24
 
 export interface Camera {
   x: number
@@ -145,6 +147,25 @@ export function fitRect(
     animate: options.animate,
     fitted: true,
   })
+}
+
+/** Share of a world rectangle that is on screen and clear of the floating panels, 0 to 1. */
+export function visibleFraction(rect: Rect, insets: Insets = DEFAULT_INSETS): number {
+  const { x, y, k, width, height } = useViewport.getState()
+  if (width === 0 || height === 0 || rect.width === 0 || rect.height === 0) return 0
+  const left = Math.max(rect.x * k + x, insets.left)
+  const top = Math.max(rect.y * k + y, insets.top)
+  const right = Math.min((rect.x + rect.width) * k + x, width - insets.right)
+  const bottom = Math.min((rect.y + rect.height) * k + y, height - insets.bottom)
+  if (right <= left || bottom <= top) return 0
+  return ((right - left) * (bottom - top)) / (rect.width * k * (rect.height * k))
+}
+
+/** Frames a part of the diagram, zooming out as far as needed but never in beyond 100%. */
+export function frameRect(rect: Rect, options: { insets?: Insets } = {}): void {
+  const { width, height } = useViewport.getState()
+  if (width === 0 || height === 0) return
+  moveTo(cameraForRect(rect, { width, height }, options.insets, 1), { animate: true })
 }
 
 /** Brings one table into view without zooming out further than needed to read it. */

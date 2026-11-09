@@ -5,6 +5,7 @@ const FONTS: Record<TextRole, string> = {
   title: '600 13px "Geist Variable"',
   name: '500 12px "Geist Mono Variable"',
   type: '400 12px "Geist Mono Variable"',
+  text: '400 13px "Geist Variable"',
 }
 
 let context: CanvasRenderingContext2D | null | undefined
@@ -29,6 +30,12 @@ export const measureText: MeasureText = (text, role) => {
   const width = Math.ceil(ctx.measureText(text).width)
   cache.set(key, width)
   return width
+}
+
+/** Width of a label in em, for fitting names into zoomed-out tables and group regions. */
+export function measureLabelEm(text: string): number {
+  // Labels use the title face; its metrics scale linearly with the font size.
+  return measureText(text, 'title') / 13
 }
 
 /**
