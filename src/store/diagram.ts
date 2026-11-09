@@ -20,9 +20,15 @@ import { fontsReady, measureText } from '@/layout/measure'
 import { bounds, type Point } from '@/layout/router'
 import { prefersReducedMotion } from '@/lib/platform'
 import { getOwn } from '@/lib/record'
-import { EMPTY_VIEW_LAYOUT, useDocuments, type DiagramDocument, type ViewLayout } from './documents'
+import {
+  activeDocument,
+  EMPTY_VIEW_LAYOUT,
+  useDocuments,
+  type DiagramDocument,
+  type ViewLayout,
+} from './documents'
 import { useUi, type FocusDepth } from './ui'
-import { fitRect, frameRect, insetsFor, useViewport } from './viewport'
+import { fitRect, frameOnOpen, frameRect, insetsFor, isInView, useViewport } from './viewport'
 
 export type Hover =
   | { kind: 'table'; tableId: string }
@@ -68,6 +74,8 @@ interface DiagramState {
   positions: Record<string, Point>
   routes: Record<string, StoredRoute>
   signature: string | null
+  /** Group pairs the layout stacked; kept for the next automatic layout of this view. */
+  stacked: string[]
   ready: boolean
   animating: boolean
   freshIds: ReadonlySet<string>
@@ -95,6 +103,7 @@ export const useDiagram = create<DiagramState>()(() => ({
   positions: {},
   routes: {},
   signature: null,
+  stacked: [],
   ready: false,
   animating: false,
   freshIds: new Set(),
@@ -119,7 +128,23 @@ interface LayoutSnapshot {
   positions: Record<string, Point>
   routes: Record<string, StoredRoute>
   signature: string | null
+  stacked: string[]
   auto: boolean
+}
+
+/** An automatic layout that is already on screen; the next one follows its order. */
+interface LayoutSeed {
+  previous: Record<string, Point>
+  stacked: string[]
+}
+
+function seedOf(layout: {
+  positions: Record<string, Point>
+  stacked?: string[]
+}): LayoutSeed | undefined {
+  return Object.keys(layout.positions).length > 0
+    ? { previous: layout.positions, stacked: layout.stacked ?? [] }
+    : undefined
 }
 
 interface PendingModel {
@@ -301,11 +326,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 async function layoutAll(
   model: SchemaModel,
   boxes: ReadonlyMap<string, TableBox>,
+  seed?: LayoutSeed,
 ): Promise<LayoutResult> {
   const engine = getLayoutEngine()
   const viewport = canvasArea()
   try {
-    return await withTimeout(runLayout(engine, { model, boxes, viewport }), LAYOUT_TIMEOUT_MS)
+    return await withTimeout(
+      runLayout(engine, { model, boxes, viewport, ...seed }),
+      LAYOUT_TIMEOUT_MS,
+    )
   } catch (error) {
     console.error('Layout failed, retrying without groups', error)
   }
@@ -396,11 +425,6 @@ function reconcile(
   return placeMissing(model, boxes, kept)
 }
 
-function activeDocument(): DiagramDocument | undefined {
-  const { documents, activeId } = useDocuments.getState()
-  return documents[activeId]
-}
-
 /** The stored arrangement of one view of a document. */
 function layoutSlot(doc: DiagramDocument, view: string | null): ViewLayout {
   if (view === null) return doc.layout
@@ -408,8 +432,8 @@ function layoutSlot(doc: DiagramDocument, view: string | null): ViewLayout {
 }
 
 function persistLayout(): void {
-  const { positions, routes, signature, auto, detail, view } = get()
-  const slot: ViewLayout = { positions, routes, signature, auto }
+  const { positions, routes, signature, stacked, auto, detail, view } = get()
+  const slot: ViewLayout = { positions, routes, signature, stacked, auto }
   const documents = useDocuments.getState()
   if (view === null) {
     documents.saveLayout({ ...slot, detail, view })
@@ -443,15 +467,26 @@ async function restoreLayout(
       positions: saved.positions,
       routes: saved.routes,
       signature,
+      stacked: saved.stacked ?? [],
       auto: saved.auto,
       ready: true,
     })
     return true
   }
   if (saved.auto || Object.keys(saved.positions).length === 0) {
-    const result = await layoutAll(model, boxes)
+    // The code changed since the last visit; start from the arrangement that was saved.
+    const result = await layoutAll(model, boxes, seedOf(saved))
     if (token !== generation) return false
-    set({ ...patch, model, boxes, ...result, signature, auto: true, ready: true })
+    set({
+      ...patch,
+      model,
+      boxes,
+      ...result,
+      stacked: result.stacked ?? [],
+      signature,
+      auto: true,
+      ready: true,
+    })
   } else {
     const positions = reconcile(model, boxes, saved.positions)
     set({
@@ -487,8 +522,21 @@ export function fitContent(animate = true): void {
   })
 }
 
+/**
+ * After a change the camera only moves when the diagram was framed as a whole and no longer
+ * fits; a diagram that still fits stays put, so the eye keeps its place.
+ */
 function refitIfUntouched(): void {
-  if (useViewport.getState().fitted) fitContent(true)
+  if (!useViewport.getState().fitted) return
+  const { model, boxes, positions, selectedTableId } = get()
+  const bounds = contentBounds(model, boxes, positions)
+  if (bounds && !isInView(bounds, insetsFor(selectedTableId !== null))) fitContent(true)
+}
+
+/** Frames a document or view that was just opened. */
+function frameOpened(): void {
+  const { model, boxes, positions } = get()
+  frameOnOpen(contentBounds(model, boxes, positions), insetsFor(false))
 }
 
 function forgetUndo(): void {
@@ -525,6 +573,7 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
     positions: {},
     routes: {},
     signature: null,
+    stacked: [],
     ready: false,
     animating: false,
     freshIds: new Set(),
@@ -546,12 +595,43 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
       positions: saved.positions,
       routes: saved.routes,
       signature: saved.signature,
+      stacked: saved.stacked ?? [],
       ready: true,
     })
     return
   }
 
-  if (await restoreLayout(model, doc.layout.detail, saved, token, {})) fitContent(false)
+  if (await restoreLayout(model, doc.layout.detail, saved, token, {})) frameOpened()
+}
+
+/** Back to the start screen: nothing is open, and nothing that was in flight may land. */
+export function closeDocument(): void {
+  generation += 1
+  sourceVersion += 1
+  if (parseTimer) clearTimeout(parseTimer)
+  undoSnapshot = null
+  pendingModel = null
+  set({
+    fullModel: EMPTY_MODEL,
+    model: EMPTY_MODEL,
+    diagnostics: [],
+    hints: [],
+    stale: false,
+    view: null,
+    boxes: new Map(),
+    positions: {},
+    routes: {},
+    signature: null,
+    stacked: [],
+    ready: false,
+    selectedTableId: null,
+    pathTargetId: null,
+    cursorTableId: null,
+    hover: null,
+    emphasis: NO_EMPHASIS,
+    spotlight: null,
+    canUndoArrange: false,
+  })
 }
 
 /** Called on every edit; parsing waits until typing pauses briefly. */
@@ -604,10 +684,18 @@ async function applyModel(full: SchemaModel, diagnostics: Diagnostic[]): Promise
 
   if (state.auto) {
     pendingModel = { full, shown: model }
-    const result = await layoutAll(model, boxes)
+    // Small edits keep the arrangement: the engine follows the order already on screen.
+    const result = await layoutAll(model, boxes, seedOf(state))
     if (token !== generation) return
     pendingModel = null
-    set({ ...shared, ...result, signature, freshIds, ready: true })
+    set({
+      ...shared,
+      ...result,
+      stacked: result.stacked ?? [],
+      signature,
+      freshIds,
+      ready: true,
+    })
     if (known.size > 0) startAnimation()
   } else {
     pendingModel = null
@@ -687,13 +775,20 @@ export async function setView(view: string | null): Promise<void> {
   const saved = doc ? layoutSlot(doc, view) : EMPTY_VIEW_LAYOUT
   if (!(await restoreLayout(model, state.detail, saved, token, patch))) return
   startAnimation()
-  fitContent(true)
+  frameOpened()
 }
 
 // ---------------------------------------------------------------- layout commands
 
-/** Lays out the newest valid model from scratch and switches to automatic mode. */
-async function relayout(detail: DetailLevel, remember: boolean): Promise<boolean> {
+/**
+ * Lays out the newest valid model and switches to automatic mode. Tidy up starts from
+ * scratch; a change of detail level follows the arrangement on screen, so the diagram
+ * keeps its shape and only the cards change size.
+ */
+async function relayout(
+  detail: DetailLevel,
+  options: { remember: boolean; fresh: boolean },
+): Promise<boolean> {
   const state = get()
   // While a document is still opening there is nothing to arrange yet.
   if (!state.ready) return false
@@ -705,22 +800,26 @@ async function relayout(detail: DetailLevel, remember: boolean): Promise<boolean
     positions: state.positions,
     routes: state.routes,
     signature: state.signature,
+    stacked: state.stacked,
     auto: state.auto,
   }
 
-  const result = await layoutAll(model, boxes)
+  const seed = !options.fresh && state.auto ? seedOf(state) : undefined
+  const result = await layoutAll(model, boxes, seed)
   if (token !== generation) return false
 
   pendingModel = null
   const selectedTableId = carryOver(state.selectedTableId, model)
   const pathTargetId = selectedTableId ? carryOver(state.pathTargetId, model) : null
   // The snapshot only describes the model that was on screen when the command started.
-  undoSnapshot = remember && model === state.model && detail === state.detail ? snapshot : null
+  undoSnapshot =
+    options.remember && model === state.model && detail === state.detail ? snapshot : null
   set({
     model,
     boxes,
     detail,
     ...result,
+    stacked: result.stacked ?? [],
     signature: structureSignature(model, boxes, detail),
     auto: true,
     selectedTableId,
@@ -731,12 +830,13 @@ async function relayout(detail: DetailLevel, remember: boolean): Promise<boolean
   })
   startAnimation()
   persistLayout()
-  fitContent(true)
+  if (options.fresh) fitContent(true)
+  else refitIfUntouched()
   return true
 }
 
 export async function arrange(): Promise<void> {
-  await relayout(get().detail, true)
+  await relayout(get().detail, { remember: true, fresh: true })
 }
 
 export function undoArrange(): void {
@@ -753,7 +853,7 @@ export async function setDetail(detail: DetailLevel): Promise<void> {
   const state = get()
   if (detail === state.detail || !state.ready) return
   if (state.auto) {
-    await relayout(detail, false)
+    await relayout(detail, { remember: false, fresh: false })
     return
   }
   // Hand-placed tables keep their position; only their size changes.

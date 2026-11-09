@@ -2,7 +2,7 @@ import { memo, useMemo } from 'react'
 import type { RefModel } from '@/dbml/model'
 import { revealInEditor } from '@/editor/bridge'
 import { computeEdges, type EdgeGeometry } from '@/layout/edges'
-import { GEOMETRY, portOffsetY } from '@/layout/geometry'
+import { GEOMETRY, portOffsetY, tableTitle } from '@/layout/geometry'
 import { roundedPath } from '@/layout/router'
 import { getOwn } from '@/lib/record'
 import { setHover, useDiagram } from '@/store/diagram'
@@ -46,6 +46,16 @@ export function EdgeLayer() {
           />
         )
       })}
+    </svg>
+  )
+}
+
+/** The relation being drawn sits above the cards, so it can be seen over its target. */
+export function LinkPreviewLayer() {
+  const active = useLinkDrag((s) => s.from !== null)
+  if (!active) return null
+  return (
+    <svg className="edge-layer link-preview-layer" width="1" height="1" aria-hidden>
       <LinkPreview />
     </svg>
   )
@@ -104,6 +114,7 @@ function LinkPreview() {
   const target = useLinkDrag((s) => s.target)
   const boxes = useDiagram((s) => s.boxes)
   const positions = useDiagram((s) => s.positions)
+  const model = useDiagram((s) => s.model)
   if (!from || !pointer) return null
 
   const box = boxes.get(from.tableId)
@@ -129,10 +140,19 @@ function LinkPreview() {
   const midX = (start.x + end.x) / 2
   const points = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]
 
+  const targetTable = target ? model.tables.find((t) => t.id === target.tableId) : undefined
+  const label = target && targetTable ? `${tableTitle(targetTable)}.${target.column}` : null
+
   return (
     <g className="edge edge-preview" data-snapped={target !== null}>
       <path className="edge-line" d={roundedPath(points, GEOMETRY.grid)} />
       <circle className="edge-preview-end" cx={end.x} cy={end.y} r={4} />
+      {/* Next to the pointer, where the eye is; the edge of the canvas would cut it off. */}
+      {label && (
+        <text className="edge-preview-label" x={pointer.x} y={pointer.y}>
+          {label}
+        </text>
+      )}
     </g>
   )
 }

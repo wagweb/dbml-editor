@@ -8,6 +8,8 @@ export const MAX_ZOOM = 2.5
 export const FAR_ZOOM = 0.5
 /** Below this even table names are too small; groups are labelled instead. */
 export const OVERVIEW_ZOOM = 0.24
+/** Zoom the camera goes to when it has to bring columns back into reading range. */
+export const READABLE_ZOOM = 0.75
 
 export interface Camera {
   x: number
@@ -149,16 +151,41 @@ export function fitRect(
   })
 }
 
-/** Share of a world rectangle that is on screen and clear of the floating panels, 0 to 1. */
-export function visibleFraction(rect: Rect, insets: Insets = DEFAULT_INSETS): number {
+/** True when the rectangle is fully on screen and clear of the floating controls. */
+export function isInView(rect: Rect, insets: Insets = DEFAULT_INSETS): boolean {
   const { x, y, k, width, height } = useViewport.getState()
-  if (width === 0 || height === 0 || rect.width === 0 || rect.height === 0) return 0
-  const left = Math.max(rect.x * k + x, insets.left)
-  const top = Math.max(rect.y * k + y, insets.top)
-  const right = Math.min((rect.x + rect.width) * k + x, width - insets.right)
-  const bottom = Math.min((rect.y + rect.height) * k + y, height - insets.bottom)
-  if (right <= left || bottom <= top) return 0
-  return ((right - left) * (bottom - top)) / (rect.width * k * (rect.height * k))
+  return (
+    rect.x * k + x >= insets.left - 0.5 &&
+    rect.y * k + y >= insets.top - 0.5 &&
+    (rect.x + rect.width) * k + x <= width - insets.right + 0.5 &&
+    (rect.y + rect.height) * k + y <= height - insets.bottom + 0.5
+  )
+}
+
+/**
+ * Frames a diagram that was just opened. It is fitted as a whole when that still shows
+ * its columns; a larger diagram opens at the smallest zoom that shows columns, starting at
+ * its top left corner, and the overview map shows the rest.
+ */
+export function frameOnOpen(rect: Rect | null, insets: Insets = DEFAULT_INSETS): void {
+  const { width, height } = useViewport.getState()
+  if (!rect || width === 0 || height === 0) return
+  const fit = cameraForRect(rect, { width, height }, insets)
+  if (fit.k >= FAR_ZOOM) {
+    moveTo(fit, { fitted: true })
+    return
+  }
+  const k = FAR_ZOOM
+  const availableHeight = height - insets.top - insets.bottom
+  moveTo({
+    k,
+    x: insets.left - rect.x * k,
+    // A diagram that is only too wide stays centred vertically.
+    y:
+      rect.height * k <= availableHeight
+        ? insets.top + (availableHeight - rect.height * k) / 2 - rect.y * k
+        : insets.top - rect.y * k,
+  })
 }
 
 /** Frames a part of the diagram, zooming out as far as needed but never in beyond 100%. */
@@ -168,30 +195,64 @@ export function frameRect(rect: Rect, options: { insets?: Insets } = {}): void {
   moveTo(cameraForRect(rect, { width, height }, options.insets, 1), { animate: true })
 }
 
-/** Brings one table into view without zooming out further than needed to read it. */
-export function revealRect(rect: Rect, options: { insets?: Insets } = {}): void {
+/**
+ * Brings a table into view, together with the tables around it when they fit. The camera
+ * moves as little as possible: no zoom change while columns are readable, and only the
+ * pan needed to clear the edges and the floating panels. Zoomed far out, a jump from search
+ * zooms in to a readable level first; a click in the diagram never zooms.
+ */
+export function revealRect(
+  rect: Rect,
+  options: {
+    insets?: Insets
+    around?: Rect
+    /**
+     * False for pointer clicks: the table is on screen already, and zooming in would switch
+     * every card to rows halfway through the move.
+     */
+    zoom?: boolean
+  } = {},
+): void {
   const { width, height, x, y, k } = useViewport.getState()
   if (width === 0 || height === 0) return
   const insets = options.insets ?? DEFAULT_INSETS
-  const zoom = Math.max(k, 0.7)
-  const visible =
-    k >= FAR_ZOOM &&
-    rect.x * k + x >= insets.left &&
-    rect.y * k + y >= insets.top &&
-    (rect.x + rect.width) * k + x <= width - insets.right &&
-    (rect.y + rect.height) * k + y <= height - insets.bottom
-  if (visible) return
-
   const availableWidth = width - insets.left - insets.right
   const availableHeight = height - insets.top - insets.bottom
-  moveTo(
-    {
-      k: zoom,
-      x: insets.left + availableWidth / 2 - (rect.x + rect.width / 2) * zoom,
-      y: insets.top + availableHeight / 2 - (rect.y + rect.height / 2) * zoom,
-    },
-    { animate: true },
-  )
+  const around = options.around ?? rect
+
+  if (k < FAR_ZOOM && options.zoom !== false) {
+    // Columns are hidden at this zoom: zoom in to read them, around the table.
+    const zoom = Math.min(
+      READABLE_ZOOM,
+      Math.max(FAR_ZOOM, cameraForRect(around, { width, height }, insets).k),
+    )
+    const target = fitsAt(around, zoom) ? around : rect
+    moveTo(
+      {
+        k: zoom,
+        x: insets.left + availableWidth / 2 - (target.x + target.width / 2) * zoom,
+        y: insets.top + availableHeight / 2 - (target.y + target.height / 2) * zoom,
+      },
+      { animate: true },
+    )
+    return
+  }
+
+  function fitsAt(area: Rect, zoom: number): boolean {
+    return area.width * zoom <= availableWidth && area.height * zoom <= availableHeight
+  }
+
+  const target = fitsAt(around, k) ? around : rect
+  const nudge = (start: number, size: number, low: number, high: number) => {
+    if (size > high - low) return low + (high - low - size) / 2 - start
+    if (start < low) return low - start
+    if (start + size > high) return high - (start + size)
+    return 0
+  }
+  const dx = nudge(target.x * k + x, target.width * k, insets.left, width - insets.right)
+  const dy = nudge(target.y * k + y, target.height * k, insets.top, height - insets.bottom)
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+  moveTo({ k, x: x + dx, y: y + dy }, { animate: true })
 }
 
 export function screenToWorld(screen: Point): Point {

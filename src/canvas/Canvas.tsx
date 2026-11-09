@@ -1,19 +1,21 @@
 import { TriangleAlert } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef } from 'react'
-import { goToFirstProblem, loadSampleHere } from '@/app/actions'
-import { SAMPLES } from '@/dbml/samples'
+import { goToFirstProblem, insertStarterTable } from '@/app/actions'
+import { STARTER_TABLE } from '@/dbml/starter'
 import { refColumnsByTable } from '@/layout/geometry'
 import { tableTones } from '@/layout/groups'
 import { fitContent, useDiagram } from '@/store/diagram'
 import { useUi } from '@/store/ui'
 import { FAR_ZOOM, OVERVIEW_ZOOM, useViewport } from '@/store/viewport'
 import { Button } from '@/ui/Button'
+import { CodeSnippet } from '@/ui/CodeSnippet'
 import { CanvasChips } from './CanvasChips'
 import { CanvasToolbar } from './CanvasToolbar'
-import { EdgeLayer } from './EdgeLayer'
+import { EdgeLayer, LinkPreviewLayer } from './EdgeLayer'
 import { EdgeTooltip } from './EdgeTooltip'
 import { GroupLayer, GroupOverviewLabels } from './GroupLayer'
 import { Inspector } from './Inspector'
+import { useLinkDrag } from './linkDrag'
 import { Minimap } from './Minimap'
 import { TableNode } from './TableNode'
 import { useCanvasGestures } from './useCanvasGestures'
@@ -34,13 +36,14 @@ export const Canvas = memo(function Canvas() {
   const ready = useDiagram((s) => s.ready)
   const stale = useDiagram((s) => s.stale)
   const animating = useDiagram((s) => s.animating)
+  const linking = useLinkDrag((s) => s.from !== null)
   const minimapOpen = useUi((s) => s.minimapOpen)
 
   useCanvasGestures(viewportRef)
 
   // The camera is applied straight to the DOM; panning must not re-render React.
   useEffect(() => {
-    const fonts = { lod: '', group: '' }
+    const fonts = { lod: '', group: '', handle: '' }
     const apply = () => {
       const { x, y, k } = useViewport.getState()
       const world = worldRef.current
@@ -59,6 +62,10 @@ export const Canvas = memo(function Canvas() {
       if (fonts.group !== groupFont) {
         world.style.setProperty('--group-font', (fonts.group = groupFont))
       }
+      // Handles and drag labels keep their screen size when zoomed out, so they stay hittable.
+      const handle = (Math.round(Math.max(1, 1 / k) * 10) / 10).toString()
+      if (fonts.handle !== handle)
+        world.style.setProperty('--screen-scale', (fonts.handle = handle))
 
       // Thin out the marks when zoomed out so they never turn into noise.
       const size = GRID * k * (k < 0.25 ? 4 : k < 0.55 ? 2 : 1)
@@ -130,6 +137,7 @@ export const Canvas = memo(function Canvas() {
   return (
     <section
       ref={viewportRef}
+      id="diagram"
       className="canvas-viewport h-full outline-hidden focus-visible:shadow-[inset_0_0_0_2px_var(--accent)]"
       aria-label="Diagram"
       aria-describedby="canvas-help"
@@ -148,10 +156,15 @@ export const Canvas = memo(function Canvas() {
 
       {/* Controls come before the tables in the tab order, whatever the diagram's size. */}
       <CanvasChips />
-      <CanvasToolbar />
+      {!empty && <CanvasToolbar />}
       <Inspector />
 
-      <div ref={worldRef} className="canvas-world" data-animating={animating}>
+      <div
+        ref={worldRef}
+        className="canvas-world"
+        data-animating={animating}
+        data-linking={linking}
+      >
         {ready && (
           <>
             <GroupLayer />
@@ -171,6 +184,7 @@ export const Canvas = memo(function Canvas() {
                 />
               )
             })}
+            <LinkPreviewLayer />
             <GroupOverviewLabels />
           </>
         )}
@@ -192,33 +206,43 @@ export const Canvas = memo(function Canvas() {
       {empty && <EmptyState hasProblem={stale} />}
 
       <EdgeTooltip />
-      {minimapOpen && <Minimap />}
+      {minimapOpen && !empty && <Minimap />}
     </section>
   )
 })
 
 function EmptyState({ hasProblem }: { hasProblem: boolean }) {
+  if (hasProblem) {
+    return (
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+        <div data-canvas-interactive className="pointer-events-auto max-w-sm text-center">
+          <h2 className="text-[15px] font-semibold text-ink">This schema has a problem</h2>
+          <p className="mt-1.5 text-[13px] text-ink-2">
+            The diagram appears as soon as the DBML is valid.
+          </p>
+          <Button className="mt-4" onClick={goToFirstProblem}>
+            Go to problem
+          </Button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-      <div data-canvas-interactive className="pointer-events-auto max-w-sm text-center">
-        <h2 className="text-[15px] font-semibold text-ink">
-          {hasProblem ? 'This schema has a problem' : 'Nothing to draw yet'}
-        </h2>
+      <div data-canvas-interactive className="pointer-events-auto w-full max-w-[380px]">
+        <h2 className="text-[15px] font-semibold text-ink">Nothing to draw yet</h2>
         <p className="mt-1.5 text-[13px] text-ink-2">
-          {hasProblem
-            ? 'The diagram appears as soon as the DBML is valid.'
-            : 'Describe a table in the editor and it shows up here. Or start from an example:'}
+          Describe a table in the code and it appears here. For example:
         </p>
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {hasProblem ? (
-            <Button onClick={goToFirstProblem}>Go to problem</Button>
-          ) : (
-            SAMPLES.map((sample) => (
-              <Button key={sample.id} onClick={() => loadSampleHere(sample)}>
-                {sample.name}
-              </Button>
-            ))
-          )}
+        <CodeSnippet
+          source={STARTER_TABLE}
+          className="mt-3 rounded-lg bg-panel px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--line)]"
+        />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button onClick={insertStarterTable}>Add this table</Button>
+          <Button variant="ghost" onClick={() => useUi.getState().openImport()}>
+            Import from SQL
+          </Button>
         </div>
       </div>
     </div>

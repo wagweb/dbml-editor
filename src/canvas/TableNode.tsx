@@ -8,7 +8,7 @@ import {
   type PointerEvent,
 } from 'react'
 import type { ColumnModel, TableModel } from '@/dbml/model'
-import { clickTable, focusTable, nudgeTable, revealTable } from '@/app/actions'
+import { cancelPendingReveal, clickTable, focusTable, nudgeTable, revealTable } from '@/app/actions'
 import {
   addRelationFromDiagram,
   renameColumnFromDiagram,
@@ -79,7 +79,8 @@ export const TableNode = memo(
     if (!position) return null
 
     const onPointerOver = (event: PointerEvent<HTMLElement>) => {
-      if (dragging) return
+      // While a relation is drawn the hover highlight would compete with the new line.
+      if (dragging || useLinkDrag.getState().from) return
       const row = event.target instanceof Element ? event.target.closest('[data-column]') : null
       const column = row?.getAttribute('data-column')
       setHover(
@@ -166,7 +167,14 @@ export const TableNode = memo(
           <header
             className="table-header flex items-center gap-2"
             style={{ height: GEOMETRY.headerHeight, paddingInline: GEOMETRY.padX }}
-            onDoubleClick={editable ? () => setEditing('title') : undefined}
+            onDoubleClick={
+              editable
+                ? () => {
+                    cancelPendingReveal()
+                    setEditing('title')
+                  }
+                : undefined
+            }
           >
             {editing === 'title' ? (
               <InlineEdit
@@ -213,7 +221,14 @@ export const TableNode = memo(
                   linkSource={linkSource === column.name}
                   linkTarget={linkTarget === column.name}
                   editing={typeof editing === 'object' && editing?.column === column.name}
-                  onEdit={editable ? () => setEditing({ column: column.name }) : undefined}
+                  onEdit={
+                    editable
+                      ? () => {
+                          cancelPendingReveal()
+                          setEditing({ column: column.name })
+                        }
+                      : undefined
+                  }
                   onEditDone={(value) => {
                     finishEdit()
                     if (value !== null) {
@@ -412,6 +427,7 @@ function RelationHandle({ from }: { from: ColumnRef }) {
         if (!current.dragging) {
           if (Math.hypot(event.clientX - current.x, event.clientY - current.y) <= LINK_SLOP) return
           current.dragging = true
+          setHover(null)
           startLinkDrag(from, worldPoint(event))
         }
         moveLinkDrag(worldPoint(event), columnAt(event.clientX, event.clientY))

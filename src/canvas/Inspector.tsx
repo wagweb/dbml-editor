@@ -95,7 +95,9 @@ export function Inspector() {
               }}
             />
           ) : (
-            <h2 className="truncate text-sm font-semibold text-ink">{tableTitle(table)}</h2>
+            <h2 className="line-clamp-2 text-sm font-semibold [overflow-wrap:anywhere] text-ink">
+              {tableTitle(table)}
+            </h2>
           )}
           <p className="truncate text-xs text-ink-2">{subtitle}</p>
         </div>

@@ -1,7 +1,8 @@
 import { isTable } from '@/dbml/model'
-import type { Sample } from '@/dbml/samples'
+import { STARTER_TABLE } from '@/dbml/starter'
 import { focusEditor, replaceEditorText, revealInEditor } from '@/editor/bridge'
 import { tableRect } from '@/layout/groups'
+import { bounds } from '@/layout/router'
 import {
   arrange,
   endDrag,
@@ -13,7 +14,7 @@ import {
 } from '@/store/diagram'
 import { useDocuments } from '@/store/documents'
 import { resolveTheme, useUi } from '@/store/ui'
-import { insetsFor, revealRect, visibleFraction } from '@/store/viewport'
+import { insetsFor, revealRect } from '@/store/viewport'
 
 const NUDGE = 16
 
@@ -25,22 +26,59 @@ interface FocusOptions {
   /** Keyboard and search callers pass this, so the details are the next thing they reach. */
   focusPanel?: boolean
   /**
-   * Leave the camera alone while most of the table is on screen. Used for pointer clicks:
-   * the user can see the table, and a double-click must not land on a moving target.
+   * Pointer clicks on a card: any pan waits a moment, so the second click of a
+   * double-click (rename) lands on the table it started on.
    */
-  keepCamera?: boolean
+  fromPointer?: boolean
+  /**
+   * May the camera zoom in to make columns readable? Only for jumps from search and from
+   * problems; a click within the diagram moves the camera at most sideways.
+   */
+  zoom?: boolean
+}
+
+const DOUBLE_CLICK_MS = 260
+let pendingReveal: ReturnType<typeof setTimeout> | undefined
+
+/** Cancels a camera move that a click scheduled, e.g. because a double-click followed. */
+export function cancelPendingReveal(): void {
+  if (pendingReveal) clearTimeout(pendingReveal)
+  pendingReveal = undefined
+}
+
+/**
+ * Brings a selected table into view together with the tables in focus around it, clear of
+ * the details panel. Falls back to the table alone when its surroundings do not fit.
+ */
+function revealSelection(tableId: string, zoom: boolean): void {
+  const { model, boxes, positions, emphasis } = useDiagram.getState()
+  const table = model.tables.find((t) => t.id === tableId)
+  const rect = table && tableRect(table, boxes, positions)
+  if (!rect) return
+  const around = bounds(
+    [...(emphasis.focus ?? [tableId])].flatMap((id) => {
+      const other = tableRect({ id }, boxes, positions)
+      return other ? [other] : []
+    }),
+  )
+  revealRect(rect, { insets: insetsFor(true), around: around ?? rect, zoom })
 }
 
 /** Selects a table and brings it into view on the canvas and in the editor. */
 export function focusTable(tableId: string, options: FocusOptions = {}): void {
-  const { model, boxes, positions } = useDiagram.getState()
+  const { model } = useDiagram.getState()
   const table = model.tables.find((t) => t.id === tableId)
   if (!table) return
   selectTable(tableId)
-  const rect = tableRect(table, boxes, positions)
-  const insets = insetsFor(true)
-  if (rect && !(options.keepCamera && visibleFraction(rect, insets) >= 0.5)) {
-    revealRect(rect, { insets })
+  cancelPendingReveal()
+  const zoom = options.zoom ?? false
+  if (options.fromPointer) {
+    pendingReveal = setTimeout(() => {
+      pendingReveal = undefined
+      revealSelection(tableId, zoom)
+    }, DOUBLE_CLICK_MS)
+  } else {
+    revealSelection(tableId, zoom)
   }
   revealInEditor(table.range)
   if (options.focusPanel) {
@@ -61,7 +99,7 @@ export function clickTable(tableId: string, modifiers: { shiftKey: boolean }): v
     if (target.id !== selected.id) setPathTarget(tableId)
     return
   }
-  focusTable(tableId, { keepCamera: true })
+  focusTable(tableId, { fromPointer: true })
 }
 
 /** Scrolls a table into view without selecting it, e.g. when it receives keyboard focus. */
@@ -126,15 +164,10 @@ export function newDiagram(): void {
   requestAnimationFrame(focusEditor)
 }
 
-export function openSample(sample: Sample): void {
-  useDocuments.getState().create({ name: sample.name, source: sample.source })
-}
-
-/** Puts a sample into the current diagram as one edit, so undo brings the old text back. */
-export function loadSampleHere(sample: Sample): void {
-  if (!replaceEditorText(sample.source)) {
-    useDocuments.getState().setSource(sample.source)
-  }
+/** Puts a small table into an empty diagram as one edit, so undo takes it back. */
+export function insertStarterTable(): void {
+  if (!replaceEditorText(STARTER_TABLE)) useDocuments.getState().setSource(STARTER_TABLE)
+  requestAnimationFrame(focusEditor)
 }
 
 export function toggleTheme(): void {
