@@ -1,3 +1,4 @@
+import { isMac } from '@/lib/platform'
 import { Kbd } from '@/ui/Kbd'
 import { useUi } from '@/store/ui'
 import { Dialog } from '@/ui/Dialog'
@@ -24,6 +25,7 @@ const SECTIONS: { title: string; items: [keys: string, description: string][] }[
       ['0', 'Zoom to 100%'],
       ['1', 'Fit the diagram to the screen'],
       ['shift+A', 'Tidy up the layout'],
+      ['P', 'Present the diagram, then arrow keys to step and Esc to stop'],
       ['Tab', 'Step through the tables'],
       ['Enter', 'Open the details of the focused table'],
       ['F2', 'Rename the focused table'],
@@ -38,6 +40,12 @@ const SECTIONS: { title: string; items: [keys: string, description: string][] }[
     items: [
       ['mod+F', 'Find and replace'],
       ['ctrl+Space', 'Suggest completions'],
+      ['Tab', 'Take a suggestion, then jump between its placeholders'],
+      ['shift+alt+F', 'Format the code'],
+      // CodeMirror's folding keys differ by platform.
+      [isMac ? 'mod+alt+[' : 'ctrl+shift+[', 'Fold the block at the cursor'],
+      [isMac ? 'mod+alt+]' : 'ctrl+shift+]', 'Unfold it again'],
+      ['mod+shift+M', 'List problems and hints with their fixes'],
       ['mod+/', 'Comment or uncomment the line'],
       ['F8', 'Jump to the next problem'],
       ['Esc Tab', 'Leave the editor with the keyboard'],

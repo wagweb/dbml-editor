@@ -1,18 +1,25 @@
 import {
+  Braces,
   Code2,
   Database,
   Download,
+  Eye,
   FileCode2,
+  FileText,
   Image,
+  IndentIncrease,
   Keyboard,
   Link2,
   Network,
   PanelLeft,
+  Presentation,
   Search,
   Shapes,
   SlidersHorizontal,
   SunMoon,
 } from 'lucide-react'
+import type { IndentStyle } from '@/dbml/format'
+import { activeDocument, useDocuments } from '@/store/documents'
 import { useUi, type ThemePreference } from '@/store/ui'
 import { Button, IconButton } from '@/ui/Button'
 import { Kbd } from '@/ui/Kbd'
@@ -32,7 +39,17 @@ import {
 } from '@/ui/Menu'
 import { APP_NAME, SEARCH_LABEL } from './constants'
 import { DocumentMenu } from './DocumentMenu'
-import { copyShareLink, exportDbml, exportPng, exportSvg } from './exportActions'
+import { editSharedDiagram } from './actions'
+import { describeIndent, formatCode, indentFor, setIndentation } from './codeActions'
+import {
+  copyMermaid,
+  copyShareLink,
+  exportDbml,
+  exportMarkdown,
+  exportPng,
+  exportSvg,
+} from './exportActions'
+import { startPresenting } from './present'
 import { Logo } from './Logo'
 
 const THEMES: { value: ThemePreference; label: string }[] = [
@@ -41,14 +58,24 @@ const THEMES: { value: ThemePreference; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 
-export function Header({ mobile, hasDocument }: { mobile: boolean; hasDocument: boolean }) {
+const INDENT_SIZES = [2, 3, 4, 8] as const
+
+interface HeaderProps {
+  mobile: boolean
+  hasDocument: boolean
+  /** A diagram from a view-only link: no code, no document menu, a way to edit a copy. */
+  viewOnly: boolean
+}
+
+export function Header({ mobile, hasDocument, viewOnly }: HeaderProps) {
   const editorOpen = useUi((s) => s.editorOpen)
   const mobileView = useUi((s) => s.mobileView)
   const { toggleEditor, setCommandOpen, setMobileView } = useUi.getState()
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2">
+    <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel pr-4 pl-2">
       {hasDocument &&
+        !viewOnly &&
         (mobile ? (
           <IconButton
             label={mobileView === 'code' ? 'Show diagram' : 'Show code'}
@@ -78,63 +105,106 @@ export function Header({ mobile, hasDocument }: { mobile: boolean; hasDocument: 
       </div>
       {hasDocument && (
         <>
-          <span aria-hidden className="px-0.5 text-lg font-light text-line-strong max-sm:hidden">
+          <span aria-hidden className="pl-1 text-lg font-light text-line-strong max-sm:hidden">
             /
           </span>
-          <DocumentMenu />
+          {viewOnly ? <SharedTitle /> : <DocumentMenu />}
         </>
       )}
 
       <div className="flex-1" />
 
-      {/* Looks like a field, opens the search palette. */}
-      <button
-        type="button"
-        aria-keyshortcuts="Meta+K Control+K"
-        className="mr-1 flex h-8 w-56 cursor-text items-center gap-2 rounded-control bg-fill pr-1.5 pl-2.5 text-[13px] text-ink-3 shadow-[inset_0_0_0_1px_var(--line)] transition-[color,box-shadow] duration-100 hover:text-ink-2 hover:shadow-[inset_0_0_0_1px_var(--line-strong)] max-lg:hidden"
-        onClick={() => setCommandOpen(true)}
-      >
-        <Search aria-hidden className="size-[15px] shrink-0" strokeWidth={1.75} />
-        {/* Trimmed to cap height: the label is centred on its letters, not on its line box. */}
-        <span className="flex-1 text-left whitespace-nowrap [text-box:trim-both_cap_alphabetic]">
-          Search<span className="sr-only"> tables, columns and actions</span>
-        </span>
-        <span aria-hidden>
-          <Kbd shortcut="mod+K" />
-        </span>
-      </button>
-      <IconButton
-        label={SEARCH_LABEL}
-        shortcut="mod+K"
-        tooltipSide="bottom"
-        className="lg:hidden"
-        onClick={() => setCommandOpen(true)}
-      >
-        <Search />
-      </IconButton>
+      {/*
+        Spacing goes by what the eye sees. Ghost buttons carry 8 px of invisible padding,
+        filled controls none: ghosts sit 2 px apart, filled ones 10 px from their
+        neighbours, so every visible edge or icon is 18 px from the next.
+      */}
+      <div className="flex items-center gap-2.5">
+        {/* Looks like a field, opens the search palette. */}
+        <button
+          type="button"
+          aria-keyshortcuts="Meta+K Control+K"
+          className="flex h-8 w-56 cursor-text items-center gap-2 rounded-control bg-fill pr-1.5 pl-2.5 text-[13px] text-ink-3 shadow-[inset_0_0_0_1px_var(--line)] transition-[color,box-shadow] duration-100 hover:text-ink-2 hover:shadow-[inset_0_0_0_1px_var(--line-strong)] max-lg:hidden"
+          onClick={() => setCommandOpen(true)}
+        >
+          <Search aria-hidden className="size-[15px] shrink-0" strokeWidth={1.75} />
+          {/* Trimmed to cap height: the label is centred on its letters, not on its line box. */}
+          <span className="flex-1 text-left whitespace-nowrap [text-box:trim-both_cap_alphabetic]">
+            Search<span className="sr-only"> tables, columns and actions</span>
+          </span>
+          <span aria-hidden>
+            <Kbd shortcut="mod+K" />
+          </span>
+        </button>
 
-      <ViewMenu hasDocument={hasDocument} />
+        <div className="flex items-center gap-0.5">
+          <IconButton
+            label={SEARCH_LABEL}
+            shortcut="mod+K"
+            tooltipSide="bottom"
+            className="lg:hidden"
+            onClick={() => setCommandOpen(true)}
+          >
+            <Search />
+          </IconButton>
+          <ViewMenu hasDocument={hasDocument} viewOnly={viewOnly} />
+          {hasDocument && viewOnly && (
+            <Button variant="ghost" className="px-2! max-sm:hidden" onClick={startPresenting}>
+              <Presentation aria-hidden className="size-4" />
+              Present
+            </Button>
+          )}
+          {hasDocument && !viewOnly && (
+            <Button
+              variant="ghost"
+              className="px-2! max-sm:hidden"
+              onClick={() => void copyShareLink()}
+            >
+              <Link2 aria-hidden className="size-4" />
+              Share
+            </Button>
+          )}
+        </div>
 
-      {hasDocument && (
-        <>
-          <Button variant="ghost" className="max-sm:hidden" onClick={() => void copyShareLink()}>
-            <Link2 aria-hidden className="size-4" />
-            Share
-          </Button>
-          <ExportMenu />
-        </>
-      )}
+        {hasDocument && viewOnly && (
+          <>
+            <ExportMenu variant="secondary" />
+            <Button variant="primary" onClick={editSharedDiagram}>
+              Open in editor
+            </Button>
+          </>
+        )}
+        {hasDocument && !viewOnly && <ExportMenu variant="primary" />}
+      </div>
     </header>
   )
 }
 
-/** Options for how the diagram is drawn, plus the theme. The column detail lives in the toolbar. */
-function ViewMenu({ hasDocument }: { hasDocument: boolean }) {
+/** The name of a diagram from a view-only link, and that it is one. */
+function SharedTitle() {
+  const name = useUi((s) => s.viewer?.name ?? '')
+  return (
+    <div className="flex min-w-0 items-center gap-2 px-1">
+      <span className="truncate text-[13px] font-medium text-ink">{name}</span>
+      <span className="flex shrink-0 items-center gap-1 rounded-full bg-fill px-2 py-0.5 text-xs font-medium text-ink-2">
+        <Eye aria-hidden className="size-3.5" />
+        View only
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Options for how the diagram is drawn, the code's formatting, and the theme. The column
+ * detail lives in the toolbar.
+ */
+function ViewMenu({ hasDocument, viewOnly }: { hasDocument: boolean; viewOnly: boolean }) {
   const theme = useUi((s) => s.theme)
   const minimapOpen = useUi((s) => s.minimapOpen)
   const showEnums = useUi((s) => s.showEnums)
   const suggestGroups = useUi((s) => s.suggestGroups)
   const showHints = useUi((s) => s.showHints)
+  const wrapLines = useUi((s) => s.wrapLines)
   const ui = useUi.getState()
 
   return (
@@ -173,6 +243,25 @@ function ViewMenu({ hasDocument }: { hasDocument: boolean }) {
             >
               Overview map
             </MenuCheckItem>
+            <MenuItem icon={<Presentation />} shortcut="P" onSelect={startPresenting}>
+              Present
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
+        {hasDocument && !viewOnly && (
+          <>
+            <MenuLabel>Code</MenuLabel>
+            <MenuItem icon={<Braces />} shortcut="shift+alt+F" onSelect={() => void formatCode()}>
+              Format code
+            </MenuItem>
+            <IndentationMenu />
+            <MenuCheckItem
+              checked={wrapLines}
+              onCheckedChange={(next) => ui.setWrapLines(next === true)}
+            >
+              Wrap long lines
+            </MenuCheckItem>
             <MenuSeparator />
           </>
         )}
@@ -201,17 +290,55 @@ function ViewMenu({ hasDocument }: { hasDocument: boolean }) {
   )
 }
 
-function ExportMenu() {
+/** Spaces or tabs, and how wide, for the open diagram and every new one. */
+function IndentationMenu() {
+  const own = useDocuments((s) => (s.activeId ? s.documents[s.activeId]?.indent : undefined))
+  const fallback = useUi((s) => s.indent)
+  const indent: IndentStyle = own ?? fallback
+  const change = (next: Partial<IndentStyle>) =>
+    setIndentation({ ...indentFor(activeDocument()), ...next })
+
+  return (
+    <MenuSub>
+      <MenuSubTrigger icon={<IndentIncrease />} hint={describeIndent(indent)}>
+        Indentation
+      </MenuSubTrigger>
+      <MenuSubContent>
+        <MenuRadioGroup
+          value={indent.kind}
+          onValueChange={(kind) => change({ kind: kind as IndentStyle['kind'] })}
+        >
+          <MenuRadioItem value="space">Spaces</MenuRadioItem>
+          <MenuRadioItem value="tab">Tabs</MenuRadioItem>
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuLabel>{indent.kind === 'tab' ? 'Tab width' : 'Spaces per level'}</MenuLabel>
+        <MenuRadioGroup
+          value={String(indent.size)}
+          onValueChange={(size) => change({ size: Number(size) })}
+        >
+          {INDENT_SIZES.map((size) => (
+            <MenuRadioItem key={size} value={String(size)}>
+              {size}
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+      </MenuSubContent>
+    </MenuSub>
+  )
+}
+
+function ExportMenu({ variant }: { variant: 'primary' | 'secondary' }) {
   const { openDialog } = useUi.getState()
   return (
     <Menu>
       <MenuTrigger asChild>
-        <Button variant="primary">
+        <Button variant={variant}>
           <Download aria-hidden className="size-4" />
           <span className="max-sm:sr-only">Export</span>
         </Button>
       </MenuTrigger>
-      <MenuContent align="end">
+      <MenuContent align="end" className="w-64">
         <MenuItem icon={<Image />} hint="PNG" onSelect={() => void exportPng()}>
           Image
         </MenuItem>
@@ -225,8 +352,19 @@ function ExportMenu() {
           DBML file
         </MenuItem>
         <MenuSeparator />
+        <MenuLabel>For documentation</MenuLabel>
+        <MenuItem icon={<FileText />} hint=".md" onSelect={exportMarkdown}>
+          Markdown document
+        </MenuItem>
+        <MenuItem icon={<Network />} hint="Copy" onSelect={() => void copyMermaid()}>
+          Mermaid diagram
+        </MenuItem>
+        <MenuSeparator />
         <MenuItem icon={<Link2 />} onSelect={() => void copyShareLink()}>
           Copy share link
+        </MenuItem>
+        <MenuItem icon={<Eye />} onSelect={() => void copyShareLink({ viewOnly: true })}>
+          Copy view-only link
         </MenuItem>
       </MenuContent>
     </Menu>

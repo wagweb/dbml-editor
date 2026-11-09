@@ -75,6 +75,7 @@ function ViewSwitcher() {
 
 /** Groups the app found on its own: keep them in the code, or stop suggesting. */
 function SuggestedGroupsMenu({ count }: { count: number }) {
+  const readOnly = useUi((s) => s.viewer !== null)
   return (
     <Menu>
       <MenuTrigger className={CHIP}>
@@ -90,7 +91,9 @@ function SuggestedGroupsMenu({ count }: { count: number }) {
           changed.
         </p>
         <MenuSeparator />
-        <MenuItem onSelect={() => keepSuggestedGroups()}>Add groups to the code</MenuItem>
+        {!readOnly && (
+          <MenuItem onSelect={() => keepSuggestedGroups()}>Add groups to the code</MenuItem>
+        )}
         <MenuItem onSelect={() => useUi.getState().setSuggestGroups(false)}>
           Stop suggesting groups
         </MenuItem>

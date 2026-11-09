@@ -1,6 +1,8 @@
-import { isTable } from '@/dbml/model'
+import { joinQuery } from '@/dbml/joinQuery'
+import { isTable, type SchemaModel } from '@/dbml/model'
 import { STARTER_TABLE } from '@/dbml/starter'
 import { focusEditor, replaceEditorText, revealInEditor } from '@/editor/bridge'
+import { copyText } from '@/export/download'
 import { tableRect } from '@/layout/groups'
 import { bounds } from '@/layout/router'
 import {
@@ -15,6 +17,7 @@ import {
 import { useDocuments } from '@/store/documents'
 import { resolveTheme, useUi } from '@/store/ui'
 import { clickInsets, insetsFor, revealRect } from '@/store/viewport'
+import { offerTip } from './tips'
 
 const NUDGE = 16
 
@@ -106,6 +109,7 @@ export function clickTable(tableId: string, modifiers: { shiftKey: boolean }): v
     return
   }
   focusTable(tableId, { fromPointer: true })
+  offerTip()
 }
 
 /** Scrolls a table into view without selecting it, e.g. when it receives keyboard focus. */
@@ -179,4 +183,32 @@ export function insertStarterTable(): void {
 export function toggleTheme(): void {
   const { theme, setTheme } = useUi.getState()
   setTheme(resolveTheme(theme) === 'dark' ? 'light' : 'dark')
+}
+
+/** Copies a query that joins the tables of a path, one join per relation step. */
+export async function copyJoinQuery(model: SchemaModel, path: readonly string[]): Promise<void> {
+  const query = joinQuery(model, path)
+  const copied = query !== null && (await copyText(query))
+  useUi
+    .getState()
+    .showToast(
+      copied
+        ? { text: 'Query copied. It joins the tables along the path.' }
+        : { text: 'The query could not be copied', tone: 'error' },
+    )
+}
+
+/** Turns a diagram from a view-only link into one of this browser's own diagrams. */
+export function editSharedDiagram(): void {
+  const ui = useUi.getState()
+  const shared = ui.viewer
+  if (!shared) return
+  ui.setViewer(null)
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  const { documents, create, open } = useDocuments.getState()
+  const existing = Object.values(documents).find(
+    (doc) => doc.name === shared.name && doc.source === shared.source,
+  )
+  if (existing) open(existing.id)
+  else create({ name: shared.name, source: shared.source })
 }

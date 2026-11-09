@@ -1,8 +1,11 @@
 import { Command } from 'cmdk'
 import {
+  Braces,
   Columns3,
+  Copy,
   CornerDownLeft,
   Database,
+  Eye,
   FileInput,
   FileText,
   FolderOpen,
@@ -12,8 +15,10 @@ import {
   Layers,
   Link2,
   Maximize,
+  Network,
   PanelLeft,
   Plus,
+  Presentation,
   Save,
   Search,
   Shapes,
@@ -37,11 +42,13 @@ import {
 import { sortedDocuments, useDocuments } from '@/store/documents'
 import { useUi, type PaletteMode } from '@/store/ui'
 import { Kbd } from '@/ui/Kbd'
-import { arrangeWithUndo, focusTable, newDiagram, toggleTheme } from './actions'
+import { arrangeWithUndo, copyJoinQuery, focusTable, newDiagram, toggleTheme } from './actions'
+import { formatCode } from './codeActions'
 import { DETAIL_LEVELS, SEARCH_LABEL } from './constants'
 import { addRelationFromDiagram, type ColumnRef } from './editActions'
 import { matchScore } from './search'
-import { copyShareLink, exportPng, exportSvg } from './exportActions'
+import { copyMermaid, copyShareLink, exportMarkdown, exportPng, exportSvg } from './exportActions'
+import { startPresenting } from './present'
 import { openFile, saveFile } from './fileActions'
 
 /** Columns only join the results once the search is specific enough to keep the list short. */
@@ -99,9 +106,18 @@ function PaletteCommands({ close }: { close: () => void }) {
   const activeId = useDocuments((s) => s.activeId)
   const [query, setQuery] = useState('')
 
+  const readOnly = useUi((s) => s.viewer !== null)
+  const pathCount = useDiagram((s) => s.emphasis.path?.length ?? 0)
+
   const run = (action: () => void) => runLater(close, action)
   const ui = useUi.getState()
-  const hasDiagram = activeId !== null
+  // A view-only diagram can be searched, exported and presented, but has no document.
+  const hasDiagram = activeId !== null || readOnly
+  const hasDocument = activeId !== null
+  const copyPathQuery = () => {
+    const { model: shown, emphasis } = useDiagram.getState()
+    return copyJoinQuery(shown, emphasis.path ?? [])
+  }
   const searching = query.trim().length > 0
   const groups = new Map(model.groups.map((g) => [g.id, g.name]))
   const others = sortedDocuments(documents).filter((d) => d.id !== activeId)
@@ -241,8 +257,55 @@ function PaletteCommands({ close }: { close: () => void }) {
             <Item icon={<Database />} onSelect={run(() => ui.openDialog('export-sql'))}>
               Export as SQL script
             </Item>
+            <Item icon={<FileText />} onSelect={run(exportMarkdown)}>
+              Export as Markdown document
+            </Item>
+            <Item
+              icon={<Network />}
+              keywords={['github', 'readme']}
+              onSelect={run(() => void copyMermaid())}
+            >
+              Copy as Mermaid diagram
+            </Item>
             <Item icon={<Link2 />} onSelect={run(() => void copyShareLink())}>
               Copy share link
+            </Item>
+            <Item
+              icon={<Eye />}
+              keywords={['read only', 'share']}
+              onSelect={run(() => void copyShareLink({ viewOnly: true }))}
+            >
+              Copy view-only link
+            </Item>
+            <Item
+              icon={<Presentation />}
+              shortcut="P"
+              keywords={['slides', 'fullscreen']}
+              onSelect={run(startPresenting)}
+            >
+              Present diagram
+            </Item>
+            {pathCount > 1 && (
+              <Item
+                icon={<Copy />}
+                keywords={['join', 'sql', 'path']}
+                onSelect={run(() => void copyPathQuery())}
+              >
+                Copy SQL query for the path
+              </Item>
+            )}
+          </Group>
+        )}
+
+        {hasDiagram && !readOnly && (
+          <Group heading="Code">
+            <Item
+              icon={<Braces />}
+              shortcut="shift+alt+F"
+              keywords={['prettier', 'indent', 'align']}
+              onSelect={run(() => void formatCode())}
+            >
+              Format code
             </Item>
           </Group>
         )}
@@ -254,7 +317,7 @@ function PaletteCommands({ close }: { close: () => void }) {
           <Item icon={<FolderOpen />} shortcut="mod+O" onSelect={run(() => void openFile())}>
             Open DBML file
           </Item>
-          {hasDiagram && (
+          {hasDocument && (
             <Item icon={<Save />} shortcut="mod+S" onSelect={run(() => void saveFile())}>
               Save to file
             </Item>
@@ -262,7 +325,7 @@ function PaletteCommands({ close }: { close: () => void }) {
           <Item icon={<FileInput />} onSelect={run(() => ui.openImport())}>
             Import from SQL
           </Item>
-          {hasDiagram && (
+          {hasDocument && (
             <Item icon={<PanelLeft />} shortcut="mod+\" onSelect={run(ui.toggleEditor)}>
               Show or hide code
             </Item>

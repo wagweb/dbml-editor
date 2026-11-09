@@ -9,13 +9,21 @@ import { Splitter } from '@/app/Splitter'
 import { SqlExportDialog, SqlImportDialog } from '@/app/SqlDialogs'
 import { StatusBar } from '@/app/StatusBar'
 import { checkFileOnDisk, openDropped, openFile, saveFile } from '@/app/fileActions'
+import { onFullscreenChange, startPresenting } from '@/app/present'
 import { StartScreen } from '@/app/StartScreen'
 import { Canvas } from '@/canvas/Canvas'
 import { CodeEditor } from '@/editor/CodeEditor'
 import { isEditableTarget } from '@/lib/platform'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { closeDocument, openDocument } from '@/store/diagram'
-import { activeDocument, useDocuments } from '@/store/documents'
+import {
+  activeDocument,
+  EMPTY_LAYOUT,
+  shownDiagram,
+  useDocuments,
+  type DiagramDocument,
+} from '@/store/documents'
+import type { SharedDiagram } from '@/share/encode'
 import { resolveTheme, useUi } from '@/store/ui'
 import { Toaster } from '@/ui/Toast'
 import { TooltipProvider } from '@/ui/Tooltip'
@@ -88,6 +96,9 @@ function useGlobalShortcuts(): void {
       if (event.key === '?') {
         event.preventDefault()
         ui.openDialog('shortcuts')
+      } else if (event.key === 'p' && !event.shiftKey && shownDiagram()) {
+        event.preventDefault()
+        startPresenting()
       } else if (event.key === 'A' && event.shiftKey) {
         event.preventDefault()
         void arrangeWithUndo()
@@ -187,24 +198,42 @@ function DropOverlay() {
   )
 }
 
+/** A diagram from a view-only link, dressed as a document that is never stored. */
+function viewerDocument(viewer: SharedDiagram): DiagramDocument {
+  const { name, source } = viewer
+  return { id: 'view-only', name, source, createdAt: 0, updatedAt: 0, layout: EMPTY_LAYOUT }
+}
+
 export default function App() {
   const activeId = useDocuments((s) => s.activeId)
   const externalRevision = useDocuments((s) => s.externalRevision)
-  const name = useDocuments((s) => (s.activeId ? s.documents[s.activeId]?.name : undefined))
+  const documentName = useDocuments((s) => (s.activeId ? s.documents[s.activeId]?.name : undefined))
+  const viewer = useUi((s) => s.viewer)
+  const presenting = useUi((s) => s.presenting)
   const editorOpen = useUi((s) => s.editorOpen)
   const mobileView = useUi((s) => s.mobileView)
   const mobile = useMediaQuery('(max-width: 767px)')
+  const name = viewer?.name ?? documentName
 
   useTheme()
   useGlobalShortcuts()
   useFileDrop()
 
   useEffect(() => {
+    if (viewer) {
+      void openDocument(viewerDocument(viewer))
+      return
+    }
     const doc = activeDocument()
     if (doc) void openDocument(doc)
     else closeDocument()
     // Also reopens when another tab saved a newer version of the open diagram.
-  }, [activeId, externalRevision])
+  }, [activeId, externalRevision, viewer])
+
+  useEffect(() => {
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [])
 
   useEffect(() => {
     document.title = name ? `${name} | ${APP_NAME}` : APP_NAME
@@ -223,9 +252,11 @@ export default function App() {
     }
   }, [])
 
-  const hasDocument = activeId !== null
-  const showEditor = mobile ? mobileView === 'code' : editorOpen
-  const showCanvas = !mobile || mobileView === 'diagram'
+  const hasDocument = activeId !== null || viewer !== null
+  // A view-only link and a presentation show the diagram alone.
+  const codeAvailable = viewer === null && !presenting
+  const showEditor = codeAvailable && (mobile ? mobileView === 'code' : editorOpen)
+  const showCanvas = !codeAvailable || !mobile || mobileView === 'diagram'
 
   return (
     <TooltipProvider delayDuration={350} skipDelayDuration={200}>
@@ -239,12 +270,14 @@ export default function App() {
             Skip to diagram
           </a>
         )}
-        <Header mobile={mobile} hasDocument={hasDocument} />
+        {!presenting && (
+          <Header mobile={mobile} hasDocument={hasDocument} viewOnly={viewer !== null} />
+        )}
         <main className="flex min-h-0 flex-1">
           {hasDocument ? (
             <>
               <h1 className="sr-only">{name ? `${name}, database diagram` : APP_NAME}</h1>
-              <EditorPane visible={showEditor} fullWidth={mobile} />
+              {viewer === null && <EditorPane visible={showEditor} fullWidth={mobile} />}
               {showEditor && !mobile && <Splitter />}
               <div hidden={!showCanvas} className="min-w-0 flex-1">
                 <Canvas />

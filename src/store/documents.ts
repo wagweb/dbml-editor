@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { detectIndent, formatDbml, type IndentStyle } from '@/dbml/format'
 import { STARTER_SOURCE } from '@/dbml/starter'
 import type { StoredRoute } from '@/layout/elk'
 import type { DetailLevel } from '@/layout/geometry'
@@ -43,6 +44,8 @@ export interface DiagramDocument {
   updatedAt: number
   layout: DiagramLayout
   file?: FileLink
+  /** Detected from the text it was created from, or chosen in the view menu. */
+  indent?: IndentStyle
 }
 
 interface DocumentsState {
@@ -64,6 +67,7 @@ interface DocumentsState {
   replaceSource: (id: string, source: string) => void
   saveLayout: (layout: Partial<DiagramLayout>) => void
   setFile: (id: string, file: FileLink | null) => void
+  setIndent: (id: string, indent: IndentStyle) => void
 }
 
 export const EMPTY_VIEW_LAYOUT: ViewLayout = {
@@ -127,10 +131,15 @@ export const useDocuments = create<DocumentsState>()(
 
         create: (init) => {
           const { documents } = get()
-          const doc = newDocument(
-            uniqueName(init?.name?.trim() || 'Untitled diagram', documents),
-            init?.source ?? STARTER_SOURCE,
-          )
+          // Pasted, dropped or opened text keeps the indentation it came with. A new
+          // diagram starts in the indentation chosen for new ones.
+          const detected = init?.source ? detectIndent(init.source) : null
+          const preferred = useUi.getState().indent
+          const source = init?.source ?? formatDbml(STARTER_SOURCE, preferred) ?? STARTER_SOURCE
+          const doc = {
+            ...newDocument(uniqueName(init?.name?.trim() || 'Untitled diagram', documents), source),
+            indent: detected ?? preferred,
+          }
           set({ documents: { ...documents, [doc.id]: doc }, activeId: doc.id })
           return doc.id
         },
@@ -156,6 +165,7 @@ export const useDocuments = create<DocumentsState>()(
           const copy: DiagramDocument = {
             ...newDocument(uniqueName(`${source.name} copy`, documents), source.source),
             layout: source.layout,
+            indent: source.indent,
           }
           set({ documents: { ...documents, [copy.id]: copy }, activeId: copy.id })
           return copy.id
@@ -192,6 +202,12 @@ export const useDocuments = create<DocumentsState>()(
         },
 
         saveLayout: (layout) => patchActive((doc) => ({ layout: { ...doc.layout, ...layout } })),
+
+        setIndent: (id, indent) => {
+          const { documents } = get()
+          const doc = documents[id]
+          if (doc) set({ documents: { ...documents, [id]: { ...doc, indent } } })
+        },
 
         setFile: (id, file) => {
           const { documents } = get()
@@ -230,6 +246,11 @@ export function sortedDocuments(documents: Record<string, DiagramDocument>): Dia
 export function activeDocument(): DiagramDocument | undefined {
   const { documents, activeId } = useDocuments.getState()
   return activeId === null ? undefined : documents[activeId]
+}
+
+/** The diagram on screen: the open document, or the one from a view-only link. */
+export function shownDiagram(): { name: string; source: string } | undefined {
+  return useUi.getState().viewer ?? activeDocument()
 }
 
 /**

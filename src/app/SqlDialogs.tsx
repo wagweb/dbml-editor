@@ -10,7 +10,7 @@ import {
   type ImportDialect,
 } from '@/dbml/sql'
 import { copyText, downloadText, fileSlug } from '@/export/download'
-import { useDocuments, activeDocument } from '@/store/documents'
+import { shownDiagram, useDocuments } from '@/store/documents'
 import { useUi } from '@/store/ui'
 import { Button } from '@/ui/Button'
 import { Dialog } from '@/ui/Dialog'
@@ -44,7 +44,7 @@ function SqlExport() {
 
   useEffect(() => {
     let cancelled = false
-    exportSql(activeDocument()?.source ?? '', dialect)
+    exportSql(shownDiagram()?.source ?? '', dialect)
       .then((sql) => !cancelled && setResult({ status: 'done', sql, dialect }))
       .catch(
         (error: unknown) =>
@@ -65,7 +65,7 @@ function SqlExport() {
     setTimeout(() => setCopied(false), 1600)
   }
   const download = () => {
-    if (sql !== null) downloadText(`${fileSlug(activeDocument()?.name ?? 'diagram')}.sql`, sql)
+    if (sql !== null) downloadText(`${fileSlug(shownDiagram()?.name ?? 'diagram')}.sql`, sql)
   }
 
   return (

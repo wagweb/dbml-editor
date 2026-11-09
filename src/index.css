@@ -75,6 +75,8 @@
   --line-input: #8a8a8a;
   --grid: #e3e3e3;
   --note: #fbf6e4;
+  /* Indentation levels in the code: present, never louder than the text. */
+  --indent-guide: #e6e6e6;
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 10px 32px -8px rgb(0 0 0 / 0.16);
@@ -118,6 +120,7 @@
   --edge: #5c5c5c;
   --line-input: #6e6e6e;
   --grid: #222222;
+  --indent-guide: #1f1f1f;
   /* On black a 5% tint disappears; groups need more to read as areas. */
   --group-tint: 9%;
   --group-outline: 36%;
@@ -370,6 +373,11 @@
   color: var(--accent);
 }
 
+/* The column line the code cursor is in. A tint, so it never competes with a selection. */
+.column-row[data-cursor='true'] {
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
+}
+
 /* A column found by search, or one a relation is being dragged from or onto. */
 .column-row[data-spotlight='true'],
 [data-details] [data-spotlight='true'] {
@@ -613,6 +621,13 @@
   stroke-width: 1.75;
 }
 
+/* The relation the code cursor is in: drawn in the accent, never dimmed away. */
+.edge[data-cursor='true'] .edge-line,
+.edge[data-cursor='true'] .edge-marker {
+  stroke: var(--accent);
+  stroke-opacity: 1;
+}
+
 /* A column's link to its enum type is not a foreign key: thin and dashed. */
 .edge[data-kind='enum'] .edge-line {
   stroke-dasharray: 3 4;
@@ -703,6 +718,8 @@
   font-family: var(--font-mono);
   line-height: 1.7;
   overflow: auto;
+  /* The rubber band of a trackpad dragged the code under the line numbers. */
+  overscroll-behavior-x: none;
 }
 
 .cm-editor .cm-content {
@@ -716,14 +733,60 @@
 
 .cm-editor .cm-gutters {
   border: 0;
-  background: transparent;
+  /* Opaque, so code that scrolls sideways passes under the numbers, not through them. */
+  background: var(--panel);
   color: var(--ink-3);
   font-size: 11.5px;
 }
 
 .cm-editor .cm-lineNumbers .cm-gutterElement {
-  min-width: 34px;
-  padding: 0 10px 0 8px;
+  min-width: 26px;
+  padding: 0 4px 0 2px;
+}
+
+/* Fold arrows show while the pointer is over the margin, or when a block is folded. */
+.cm-editor .cm-foldGutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 14px;
+  /* The gutter keeps an invisible spacer of zero height; its arrow must not show. */
+  overflow: hidden;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.cm-editor .cm-foldMarker {
+  display: flex;
+  visibility: hidden;
+}
+
+.cm-editor .cm-gutters:hover .cm-foldMarker,
+.cm-editor .cm-foldMarker[data-open='false'] {
+  visibility: visible;
+}
+
+.cm-editor .cm-foldMarker:hover {
+  color: var(--ink);
+}
+
+.cm-editor .cm-foldMarker[data-open='true'] svg {
+  transform: rotate(90deg);
+}
+
+.cm-editor .cm-foldPlaceholder {
+  margin: 0 3px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--fill-strong);
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.cm-editor .cm-foldPlaceholder:hover {
+  color: var(--ink);
 }
 
 .cm-editor .cm-activeLine {
@@ -855,6 +918,24 @@
   color: var(--ink-2);
 }
 
+/* A hint's fix, styled like the app's small secondary buttons. */
+.cm-editor .cm-diagnosticAction {
+  height: 24px;
+  margin: 0 0 0 10px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink);
+  font: 500 12px/24px var(--font-sans);
+  cursor: pointer;
+}
+
+.cm-editor .cm-diagnosticAction:hover {
+  background: var(--fill);
+}
+
 .cm-editor .cm-lintRange-error {
   background-image: none;
   text-decoration: underline wavy var(--danger);
@@ -882,18 +963,67 @@
   display: none;
 }
 
+.cm-editor .cm-gutter-lint {
+  width: 12px;
+}
+
+.cm-editor .cm-gutter-lint .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+}
+
 .cm-editor .cm-lint-marker {
   width: 6px;
   height: 6px;
-  margin: 0 2px;
+  margin: 0 3px 0 0;
   border-radius: 50%;
   content: '';
+}
+
+/* Errors are round, warnings are diamonds: the shape tells them apart, not only the colour. */
+.cm-editor .cm-lint-marker-error {
+  background: var(--danger);
+}
+
+.cm-editor .cm-lint-marker-warning {
+  border-radius: 1px;
+  background: var(--warn);
+  transform: rotate(45deg) scale(0.9);
 }
 
 .cm-editor .cm-panels {
   border-color: var(--line);
   background: var(--panel);
   color: var(--ink);
+}
+
+/* The list of problems and hints (Mod + Shift + M), in the app's colours. */
+.cm-editor .cm-panel.cm-panel-lint ul {
+  max-height: 160px;
+  padding: 4px;
+}
+
+.cm-editor .cm-panel.cm-panel-lint ul [aria-selected] {
+  border-radius: 6px;
+  background: var(--fill-strong);
+}
+
+.cm-editor .cm-panel.cm-panel-lint ul:focus [aria-selected] {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.cm-editor .cm-panel.cm-panel-lint ul:focus [aria-selected] .cm-diagnostic-info::before {
+  color: var(--ink-2);
+}
+
+.cm-editor .cm-panel.cm-panel-lint button[name='close'] {
+  top: 6px;
+  right: 8px;
+  color: var(--ink-2);
+  font-size: 16px;
 }
 
 .cm-editor .cm-panel.cm-search {
