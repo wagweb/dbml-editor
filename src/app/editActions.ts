@@ -8,13 +8,15 @@ import {
   renameTable,
   type TextEdit,
 } from '@/dbml/edit'
+import { describeFix, fixEdits } from '@/dbml/fixes'
+import type { Hint } from '@/dbml/hints'
 import { qualifiedId, type GroupModel, type SchemaModel } from '@/dbml/model'
 import { parseDbml } from '@/dbml/parse'
 import { applyEditorEdits, editorText, undoEditor } from '@/editor/bridge'
 import { tableTitle } from '@/layout/geometry'
 import { expectRename, useDiagram } from '@/store/diagram'
 import { activeDocument } from '@/store/documents'
-import { useUi } from '@/store/ui'
+import { isReadOnly, useUi } from '@/store/ui'
 
 export interface ColumnRef {
   tableId: string
@@ -27,6 +29,8 @@ export interface ColumnRef {
  * screen may lag a few hundred milliseconds behind the text.
  */
 function currentSchema(): { source: string; model: SchemaModel } | null {
+  // A view-only link has no code to write to.
+  if (isReadOnly()) return null
   const source = editorText() ?? activeDocument()?.source
   if (source === undefined) return null
   const parsed = parseDbml(source)
@@ -135,4 +139,12 @@ export function addIndexesFromDiagram(targets: { tableId: string; columns: strin
     count === 1 ? 'Added an index' : `Added ${count} indexes`,
     'The index could not be added',
   )
+}
+
+/** Resolves a schema hint, from the code tooltip or the list of hints. */
+export function applyHintFix(hint: Hint): boolean {
+  const schema = currentSchema()
+  const fix = schema && describeFix(hint, schema.model)
+  if (!schema || !fix) return false
+  return commit(fixEdits(hint, schema.source, schema.model), fix.done, 'This cannot be fixed here')
 }

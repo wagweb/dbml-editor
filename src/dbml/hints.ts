@@ -8,6 +8,8 @@ export interface Hint {
   message: string
   tableId: string
   column?: string
+  /** What the fix would write: the referenced type, or the name in the schema's style. */
+  suggestion?: string
   range: SourceRange
 }
 
@@ -123,6 +125,7 @@ function typeMismatches(model: SchemaModel, tables: TableModel[]): Hint[] {
         message: `${child.name}.${from.name} is ${from.type}, but ${parent.name}.${to.name} is ${to.type}`,
         tableId: child.id,
         column: from.name,
+        suggestion: to.type,
         range: from.range,
       })
     })
@@ -130,7 +133,7 @@ function typeMismatches(model: SchemaModel, tables: TableModel[]): Hint[] {
   return hints
 }
 
-type Style = 'snake' | 'camel' | 'pascal'
+export type Style = 'snake' | 'camel' | 'pascal'
 
 function styleOf(name: string): Style | null {
   if (/^[a-z][a-z0-9]*(_[a-z0-9]+)+$/.test(name)) return 'snake'
@@ -144,6 +147,19 @@ const STYLE_NAMES: Record<Style, string> = {
   snake: 'snake_case',
   camel: 'camelCase',
   pascal: 'PascalCase',
+}
+
+/** The same words in another style: `orderItems` becomes `order_items` or `OrderItems`. */
+export function inStyle(name: string, style: Style): string {
+  const words = name
+    .replaceAll(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.toLowerCase())
+  const capital = (word: string) => word[0]!.toUpperCase() + word.slice(1)
+  if (style === 'snake') return words.join('_')
+  if (style === 'pascal') return words.map(capital).join('')
+  return words.map((word, i) => (i === 0 ? word : capital(word))).join('')
 }
 
 /** Names written in another style than the clear majority of the schema. */
@@ -171,6 +187,7 @@ function namingOutliers(tables: TableModel[]): Hint[] {
       message: `${entry.column ? `${entry.table.name}.${entry.name}` : entry.name} is ${STYLE_NAMES[entry.style]}, most names here are ${STYLE_NAMES[majority]}`,
       tableId: entry.table.id,
       ...(entry.column ? { column: entry.column } : {}),
+      suggestion: inStyle(entry.name, majority),
       range: entry.range,
     }))
 }

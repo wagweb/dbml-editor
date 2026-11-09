@@ -1,4 +1,10 @@
-import { isTable, type GroupModel, type SchemaModel, type TableModel } from './model'
+import {
+  isTable,
+  type GroupModel,
+  type SchemaModel,
+  type SourceRange,
+  type TableModel,
+} from './model'
 import { parseDbml, quoteName, renameTableInSource } from './parse'
 
 /** Replacement of a stretch of the source; several edits use positions in the old text. */
@@ -287,4 +293,105 @@ function matchingBrace(source: string, start: number, limit: number): number {
     }
   }
   return -1
+}
+
+/** The column as written inside its own table, not one injected from a TablePartial. */
+function ownColumn(model: SchemaModel, tableId: string, column: string) {
+  const table = model.tables.find((t) => t.id === tableId && isTable(t))
+  const target = table?.columns.find((c) => c.name === column)
+  if (!table || !target) return null
+  if (target.range.from < table.range.from || target.range.to > table.range.to) return null
+  return { table, column: target }
+}
+
+/** End of the type that starts at `from`: a quoted name, or a word with an optional `(…)`. */
+function typeTokenEnd(source: string, from: number, limit: number): number {
+  if (source[from] === '"') {
+    const close = source.indexOf('"', from + 1)
+    return close === -1 || close >= limit ? from : close + 1
+  }
+  let depth = 0
+  let at = from
+  for (; at < limit; at += 1) {
+    const char = source[at]!
+    if (char === '(') depth += 1
+    else if (char === ')') depth = Math.max(0, depth - 1)
+    else if (depth === 0 && (/\s/.test(char) || char === '[')) break
+  }
+  return at
+}
+
+/** A type as DBML needs it written: bare when it is one word, quoted otherwise. */
+function spellType(type: string): string {
+  return /^[\w$.]+(\([^()]*\))?(\[\])?$/.test(type) ? type : `"${type}"`
+}
+
+/** Where a column's type is written: after the name, up to the settings. */
+function typeSpan(source: string, range: SourceRange): [number, number] | null {
+  const nameEnd = range.from + nameTokenLength(source, range.from)
+  const start = nameEnd + (/^\s*/.exec(source.slice(nameEnd, range.to))?.[0].length ?? 0)
+  const end = typeTokenEnd(source, start, range.to)
+  return end > start ? [start, end] : null
+}
+
+/** Changes the declared type of a column, e.g. to match the column it references. */
+export function setColumnType(
+  source: string,
+  model: SchemaModel,
+  tableId: string,
+  column: string,
+  type: string,
+): TextEdit[] | null {
+  const found = ownColumn(model, tableId, column)
+  const spelled = type.trim()
+  if (!found || !spelled || spelled.includes('"')) return null
+  const span = typeSpan(source, found.column.range)
+  if (!span) return null
+  const [typeStart, typeEnd] = span
+  return accept(source, [{ from: typeStart, to: typeEnd, insert: spellType(spelled) }])
+}
+
+/** Adds `pk` to a column's settings, or gives it settings with just `pk`. */
+export function markPrimaryKey(
+  source: string,
+  model: SchemaModel,
+  tableId: string,
+  column: string,
+): TextEdit[] | null {
+  const found = ownColumn(model, tableId, column)
+  if (!found || found.column.pk) return null
+  const { range } = found.column
+  // Settings start after the type, which may itself hold brackets (`text[]`).
+  const span = typeSpan(source, range)
+  const open = span ? source.indexOf('[', span[1]) : -1
+  const edit =
+    open !== -1 && open < range.to
+      ? { from: open + 1, to: open + 1, insert: 'pk, ' }
+      : { from: range.to, to: range.to, insert: ' [pk]' }
+  return accept(source, [edit])
+}
+
+/** Inserts a primary key column above the table's first column. */
+export function addPrimaryKeyColumn(
+  source: string,
+  model: SchemaModel,
+  tableId: string,
+  name: string,
+  type: string,
+): TextEdit[] | null {
+  const table = model.tables.find((t) => t.id === tableId && isTable(t))
+  if (!table || table.columns.some((c) => c.name === name)) return null
+  const first = table.columns.find(
+    (c) => c.range.from >= table.range.from && c.range.to <= table.range.to,
+  )
+  if (!first) return null
+  const lineStart = source.lastIndexOf('\n', first.range.from - 1) + 1
+  const indent = lineIndent(source, first.range.from)
+  return accept(source, [
+    {
+      from: lineStart,
+      to: lineStart,
+      insert: `${indent}${quoteName(name)} ${spellType(type)} [pk]\n`,
+    },
+  ])
 }

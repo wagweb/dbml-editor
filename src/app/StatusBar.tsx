@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, Lightbulb, TriangleAlert } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { useState } from 'react'
+import { describeFix } from '@/dbml/fixes'
 import type { Hint, HintKind } from '@/dbml/hints'
 import { isTable } from '@/dbml/model'
 import { revealInEditor } from '@/editor/bridge'
@@ -11,7 +12,7 @@ import { Kbd } from '@/ui/Kbd'
 import { RING_ALIGN_OFFSET } from '@/ui/Menu'
 import { focusTable, goToFirstProblem } from './actions'
 import { DBML_DOCS_URL } from './constants'
-import { addIndexesFromDiagram } from './editActions'
+import { addIndexesFromDiagram, applyHintFix } from './editActions'
 
 function count(n: number, singular: string): string {
   return `${n} ${singular}${n === 1 ? '' : 's'}`
@@ -142,7 +143,7 @@ function HintsButton({ hints }: { hints: Hint[] }) {
           aria-label="Schema hints"
           className="z-40 flex max-h-[min(440px,60vh)] w-[min(380px,calc(100vw-24px))] origin-(--radix-popover-content-transform-origin) animate-pop-in flex-col rounded-panel bg-surface shadow-pop outline-none"
         >
-          <div className="flex items-center justify-between border-b border-line py-2 pr-2 pl-4">
+          <div className="flex items-center justify-between border-b border-line py-1.5 pr-1.5 pl-4">
             <h2 className="text-[13px] font-semibold text-ink">Schema hints</h2>
             <Button
               variant="ghost"
@@ -183,7 +184,7 @@ function HintsButton({ hints }: { hints: Hint[] }) {
                   </div>
                   <ul className="px-1.5">
                     {items.map((hint, index) => {
-                      const target = kind === 'unindexed-foreign-key' ? indexTargets([hint]) : []
+                      const fix = describeFix(hint, model)
                       return (
                         <li
                           key={`${hint.tableId}:${hint.column ?? ''}:${index}`}
@@ -204,16 +205,16 @@ function HintsButton({ hints }: { hints: Hint[] }) {
                               </span>
                             )}
                           </button>
-                          {target.length > 0 && (
+                          {fix && (
                             <Button
                               variant="ghost"
-                              className="mr-1 h-6 shrink-0 px-2 text-xs"
+                              className="mr-1 h-6 max-w-[45%] shrink-0 px-2 text-xs"
                               onClick={() => {
                                 setOpen(false)
-                                addIndexesFromDiagram(target)
+                                applyHintFix(hint)
                               }}
                             >
-                              Add index
+                              <span className="truncate">{fix.label}</span>
                             </Button>
                           )}
                         </li>
