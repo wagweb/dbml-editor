@@ -28,7 +28,15 @@ import {
   type ViewLayout,
 } from './documents'
 import { useUi, type FocusDepth } from './ui'
-import { fitRect, frameOnOpen, frameRect, insetsFor, isInView, useViewport } from './viewport'
+import {
+  fitRect,
+  frameOnOpen,
+  frameRect,
+  insetsFor,
+  isInView,
+  revealRect,
+  useViewport,
+} from './viewport'
 
 export type Hover =
   | { kind: 'table'; tableId: string }
@@ -54,6 +62,7 @@ export interface Spotlight {
   column: string
 }
 
+const NO_REFS: ReadonlySet<string> = new Set()
 const NO_EMPHASIS: Emphasis = { refIds: new Set(), columns: new Map(), focus: null, path: null }
 
 interface DiagramState {
@@ -82,7 +91,11 @@ interface DiagramState {
   selectedTableId: string | null
   /** Second table of a path question: how does the selected table reach this one? */
   pathTargetId: string | null
+  /** What the code cursor is in, so the diagram can point at it while someone types. */
   cursorTableId: string | null
+  cursorColumn: string | null
+  /** Relations defined at the cursor, or touching the column it is in. */
+  cursorRefIds: ReadonlySet<string>
   hover: Hover | null
   emphasis: Emphasis
   /** A column that was just found by search; it flashes briefly. */
@@ -110,6 +123,8 @@ export const useDiagram = create<DiagramState>()(() => ({
   selectedTableId: null,
   pathTargetId: null,
   cursorTableId: null,
+  cursorColumn: null,
+  cursorRefIds: NO_REFS,
   hover: null,
   emphasis: NO_EMPHASIS,
   spotlight: null,
@@ -585,6 +600,8 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
     selectedTableId: null,
     pathTargetId: null,
     cursorTableId: null,
+    cursorColumn: null,
+    cursorRefIds: NO_REFS,
     hover: null,
     emphasis: NO_EMPHASIS,
     spotlight: null,
@@ -633,6 +650,8 @@ export function closeDocument(): void {
     selectedTableId: null,
     pathTargetId: null,
     cursorTableId: null,
+    cursorColumn: null,
+    cursorRefIds: NO_REFS,
     hover: null,
     emphasis: NO_EMPHASIS,
     spotlight: null,
@@ -747,14 +766,63 @@ export function expectRename(from: string, to: string): void {
   renameHint = { from, to }
 }
 
-export function setCursorOffset(offset: number | null): void {
-  const { model, cursorTableId } = get()
-  const table =
+const FOLLOW_CURSOR_MS = 250
+let followTimer: ReturnType<typeof setTimeout> | undefined
+
+const within = (range: { from: number; to: number }, offset: number) =>
+  range.from <= offset && offset <= range.to
+
+/**
+ * Marks the table, column and relation the code cursor is in. With `follow`, a cursor that
+ * jumped (a click or a search in the code, not typing) also brings its table into view once
+ * it rests, if it is off screen.
+ */
+export function setCursorOffset(offset: number | null, options: { follow?: boolean } = {}): void {
+  const { model, cursorTableId, cursorColumn, cursorRefIds } = get()
+  const table = offset === null ? undefined : model.tables.find((t) => within(t.range, offset))
+  const column = offset === null ? undefined : table?.columns.find((c) => within(c.range, offset))
+  const refs =
     offset === null
-      ? undefined
-      : model.tables.find((t) => t.range.from <= offset && offset <= t.range.to)
-  const next = table?.id ?? null
-  if (next !== cursorTableId) set({ cursorTableId: next })
+      ? []
+      : model.refs.filter(
+          (r) =>
+            r.kind !== 'enum' &&
+            (within(r.range, offset) ||
+              (table !== undefined &&
+                column !== undefined &&
+                [r.child, r.parent].some(
+                  (end) => end.tableId === table.id && end.columns.includes(column.name),
+                ))),
+        )
+  const ref = refs[0]
+  const nextRefs = refs.length === 0 ? NO_REFS : new Set(refs.map((r) => r.id))
+  const next = {
+    cursorTableId: table?.id ?? null,
+    cursorColumn: column?.name ?? null,
+    cursorRefIds: sameSet(nextRefs, cursorRefIds) ? cursorRefIds : nextRefs,
+  }
+  if (
+    next.cursorTableId !== cursorTableId ||
+    next.cursorColumn !== cursorColumn ||
+    next.cursorRefIds !== cursorRefIds
+  ) {
+    set(next)
+  }
+
+  if (followTimer) clearTimeout(followTimer)
+  if (!options.follow || (!table && !ref)) return
+  const ids = table ? [table.id] : [ref!.child.tableId, ref!.parent.tableId]
+  followTimer = setTimeout(() => {
+    const { boxes, positions, selectedTableId } = get()
+    const rects = ids.flatMap((id) => {
+      const rect = tableRect({ id }, boxes, positions)
+      return rect ? [rect] : []
+    })
+    if (rects.length === 0) return
+    const insets = insetsFor(selectedTableId !== null)
+    if (rects.every((rect) => isInView(rect, insets))) return
+    revealRect(rects[0]!, { insets, around: bounds(rects) ?? undefined, zoom: false })
+  }, FOLLOW_CURSOR_MS)
 }
 
 // ---------------------------------------------------------------- views

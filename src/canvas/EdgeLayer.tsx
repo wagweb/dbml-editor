@@ -15,6 +15,7 @@ export function EdgeLayer() {
   const positions = useDiagram((s) => s.positions)
   const routes = useDiagram((s) => s.routes)
   const emphasis = useDiagram((s) => s.emphasis)
+  const cursorRefIds = useDiagram((s) => s.cursorRefIds)
 
   const edges = useMemo(
     () => computeEdges(model, boxes, positions, routes),
@@ -39,6 +40,7 @@ export function EdgeLayer() {
             reference={ref}
             active={active}
             dimmed={!active && emphasis.focus !== null}
+            cursor={cursorRefIds.has(edge.refId)}
           />
         )
       })}
@@ -62,15 +64,18 @@ interface EdgeProps {
   reference: RefModel
   active: boolean
   dimmed: boolean
+  /** The code cursor is in this relation's definition, or in one of its columns. */
+  cursor: boolean
 }
 
 const Edge = memo(
-  function Edge({ edge, reference, active, dimmed }: EdgeProps) {
+  function Edge({ edge, reference, active, dimmed, cursor }: EdgeProps) {
     return (
       <g
         className="edge"
         data-active={active}
         data-dimmed={dimmed}
+        data-cursor={cursor}
         data-kind={reference.kind}
         data-ref-id={edge.refId}
         data-canvas-interactive
@@ -100,6 +105,7 @@ const Edge = memo(
     a.edge.startsAtChild === b.edge.startsAtChild &&
     a.active === b.active &&
     a.dimmed === b.dimmed &&
+    a.cursor === b.cursor &&
     a.reference === b.reference,
 )
 

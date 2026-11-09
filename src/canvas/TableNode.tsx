@@ -56,6 +56,7 @@ export const TableNode = memo(
     const selected = useDiagram((s) => s.selectedTableId === table.id)
     const pathEnd = useDiagram((s) => s.pathTargetId === table.id)
     const underCursor = useDiagram((s) => s.cursorTableId === table.id)
+    const cursorColumn = useDiagram((s) => (s.cursorTableId === table.id ? s.cursorColumn : null))
     const dimmed = useDiagram((s) => s.emphasis.focus !== null && !s.emphasis.focus.has(table.id))
     const activeColumns = useDiagram((s) => s.emphasis.columns.get(table.id) ?? '')
     const spotlight = useDiagram((s) =>
@@ -86,7 +87,9 @@ export const TableNode = memo(
     )
 
     const kind = table.kind ?? 'table'
-    const editable = kind === 'table'
+    // A view-only link has no code behind it to write to.
+    const readOnly = useUi((s) => s.viewer !== null)
+    const editable = kind === 'table' && !readOnly
     const drag = useDrag({
       ids: () => [table.id],
       onClick: (modifiers) => clickTable(table.id, modifiers),
@@ -233,8 +236,10 @@ export const TableNode = memo(
                   tableId={table.id}
                   column={column}
                   plain={kind === 'enum'}
+                  linkable={editable}
                   active={active.has(column.name)}
                   spotlight={spotlight === column.name}
+                  cursor={cursorColumn === column.name}
                   linkSource={linkSource === column.name}
                   linkTarget={linkTarget === column.name}
                   editing={typeof editing === 'object' && editing?.column === column.name}
@@ -316,8 +321,12 @@ interface RowProps {
   column: ColumnModel
   /** Enum values: just the name, no marker, no type, no relation handle. */
   plain: boolean
+  /** Shows the handle that drags a new relation out of the row. */
+  linkable: boolean
   active: boolean
   spotlight: boolean
+  /** The code cursor is in this column's line. */
+  cursor: boolean
   linkSource: boolean
   linkTarget: boolean
   editing: boolean
@@ -329,8 +338,10 @@ const Row = memo(function Row({
   tableId,
   column,
   plain,
+  linkable,
   active,
   spotlight,
+  cursor,
   linkSource,
   linkTarget,
   editing,
@@ -344,6 +355,7 @@ const Row = memo(function Row({
       data-column={column.name}
       data-active={active}
       data-spotlight={spotlight}
+      data-cursor={cursor}
       data-link-source={linkSource}
       data-link-target={linkTarget}
       onDoubleClick={onEdit ? () => onEdit(column.name) : undefined}
@@ -385,7 +397,7 @@ const Row = memo(function Row({
       {!plain && !editing && (
         <span className="ml-3 max-w-[58%] shrink-0 truncate text-ink-3">{column.type}</span>
       )}
-      {!plain && <RelationHandle from={{ tableId, column: column.name }} />}
+      {!plain && linkable && <RelationHandle from={{ tableId, column: column.name }} />}
     </li>
   )
 })
