@@ -14,3 +14,8 @@
 - Manual mode after dragging a table, with "Tidy up" and undo.
 - DBML editor based on CodeMirror 6 with syntax highlighting, completion from the official
   DBML language service and inline problem markers.
+- Diagram canvas with pan and zoom, table cards, relations with cardinality markers, table
+  groups, minimap, details panel and a tooltip for relations.
+- Focus mode, three detail levels and a large-name overview when zoomed out.
+- Keyboard and single-click alternatives for moving tables, focus handling around the
+  details panel, spoken status changes.
