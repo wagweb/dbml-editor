@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { openSchema } from './fixtures.ts'
 
 const table = (page: Page, name: string) => page.locator(`article[data-table-id="${name}"]`)
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
@@ -12,14 +13,14 @@ async function appendCode(page: Page, text: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await openSchema(page, 'storefront')
   await expect(table(page, 'orders')).toBeVisible()
 })
 
 test.describe('desktop', () => {
   test.skip(({ isMobile }) => isMobile)
 
-  test('draws the example schema on first visit', async ({ page }) => {
+  test('draws a schema opened from a link', async ({ page }) => {
     // 11 tables, two enums and one sticky note; 13 relations plus two enum links.
     await expect(page.locator('article[data-kind="table"]')).toHaveCount(11)
     await expect(page.locator('article[data-kind="enum"]')).toHaveCount(2)
@@ -128,6 +129,25 @@ test.describe('desktop', () => {
     await expect(table(page, 'countries')).toBeFocused()
   })
 
+  test('keeps the zoom when a table is clicked far out', async ({ page }) => {
+    const world = page.locator('.canvas-world')
+    const scale = () =>
+      world.evaluate((element) => /scale\(([\d.]+)\)/.exec(element.style.transform)?.[1])
+    for (let step = 0; step < 3; step += 1) {
+      await page.getByRole('button', { name: 'Zoom out' }).click()
+      await page.waitForTimeout(400)
+    }
+    await expect(world).toHaveAttribute('data-lod', 'far')
+    const before = await scale()
+
+    // Zooming in on a click switched every card to rows mid-move, which read as a flicker.
+    await table(page, 'orders').click()
+    await expect(page.getByRole('complementary', { name: 'Details of table orders' })).toBeVisible()
+    await page.waitForTimeout(700)
+    expect(await scale()).toBe(before)
+    await expect(world).toHaveAttribute('data-lod', 'far')
+  })
+
   test('reduces tables to their keys', async ({ page }) => {
     await page.getByRole('radio', { name: 'Keys' }).click()
     await expect(table(page, 'customers')).toContainText('4 more columns')
@@ -145,11 +165,11 @@ test.describe('desktop', () => {
 
   test('manages several diagrams', async ({ page }) => {
     await page.getByRole('button', { name: 'Storefront' }).click()
-    await page.getByRole('menuitem', { name: 'Blog' }).click()
+    await page.getByRole('menuitem', { name: 'New diagram' }).click()
     await expect(table(page, 'posts')).toBeVisible()
     await expect(table(page, 'orders')).toHaveCount(0)
 
-    await page.getByRole('button', { name: 'Blog' }).click()
+    await page.getByRole('button', { name: 'Untitled diagram' }).click()
     await page.getByRole('menuitem', { name: 'Delete' }).click()
     await expect(table(page, 'orders')).toBeVisible()
     await page.getByRole('button', { name: /Undo/ }).click()
@@ -199,15 +219,25 @@ test.describe('desktop', () => {
 
   test('switches between light, dark and the system theme', async ({ page }) => {
     const html = page.locator('html')
-    const view = page.getByRole('button', { name: 'View', exact: true })
+    const view = page.getByRole('button', { name: 'View options' })
+    const choose = async (theme: string) => {
+      await view.click()
+      // Arrow right enters the submenu, as in any native menu.
+      await page.getByRole('menuitem', { name: /Theme/ }).focus()
+      await page.keyboard.press('ArrowRight')
+      await page.getByRole('menuitemradio', { name: theme }).press('Enter')
+    }
 
     await view.click()
+    await page.getByRole('menuitem', { name: /Theme/ }).focus()
+    await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('menuitemradio', { name: 'Match system' })).toBeChecked()
-    await page.getByRole('menuitemradio', { name: 'Dark' }).click()
-    await expect(html).toHaveAttribute('data-theme', 'dark')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
 
-    await view.click()
-    await page.getByRole('menuitemradio', { name: 'Light' }).click()
+    await choose('Dark')
+    await expect(html).toHaveAttribute('data-theme', 'dark')
+    await choose('Light')
     await expect(html).toHaveAttribute('data-theme', 'light')
   })
 
@@ -223,7 +253,26 @@ test.describe('desktop', () => {
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowUp')
     await expect(item).toHaveAttribute('data-highlighted', '')
-    expect(await shadow()).not.toBe('none')
+    // The highlight moves on the next frame; poll instead of reading once.
+    await expect.poll(shadow).toContain('inset')
+  })
+
+  test('keeps a menu button highlighted while its menu is open', async ({ page }) => {
+    // While a menu is open the rest of the page is hidden from assistive technology,
+    // so the buttons are found by their label attribute instead of their role.
+    for (const label of ['View options', 'Storefront']) {
+      const trigger = page
+        .locator(`button[aria-label="${label}"], button:has-text("${label}")`)
+        .first()
+      const rest = await trigger.evaluate((element) => getComputedStyle(element).backgroundColor)
+      await trigger.click()
+      await page.mouse.move(5, 400)
+      await expect(trigger).toHaveAttribute('data-state', 'open')
+      expect(
+        await trigger.evaluate((element) => getComputedStyle(element).backgroundColor),
+      ).not.toBe(rest)
+      await page.keyboard.press('Escape')
+    }
   })
 
   test('shows the overview map only while part of the diagram is out of view', async ({ page }) => {
@@ -248,7 +297,7 @@ test.describe('desktop', () => {
         () =>
           [...document.querySelectorAll('article[data-table-id]')].filter((table) => {
             const label = table.querySelector('.table-lod')
-            if (!label || getComputedStyle(label).display === 'none') return false
+            if (!label || getComputedStyle(label).visibility === 'hidden') return false
             const box = table.getBoundingClientRect()
             return [...label.children].some((line) => {
               const text = line.getBoundingClientRect()

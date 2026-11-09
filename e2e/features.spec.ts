@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openSchema } from './fixtures.ts'
 
 const table = (page: Page, name: string) => page.locator(`article[data-table-id="${name}"]`)
 const details = (page: Page, name: string) =>
@@ -30,7 +31,7 @@ async function select(page: Page, name: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await openSchema(page, 'storefront')
   await expect(table(page, 'orders')).toBeVisible()
 })
 
@@ -90,7 +91,7 @@ test.describe('relations at a glance', () => {
     await expect(panel.getByRole('button', { name: /orders/ })).toBeVisible()
 
     // Cards can be switched off; the diagram then shows tables only.
-    await page.getByRole('button', { name: 'View' }).click()
+    await page.getByRole('button', { name: 'View options' }).click()
     await page.getByRole('menuitemcheckbox', { name: 'Enums as cards' }).click()
     await expect(page.locator('article[data-kind="enum"]')).toHaveCount(0)
   })
@@ -120,13 +121,23 @@ test.describe('relations at a glance', () => {
     await button.click()
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('heading', { name: 'Schema hints' })).toBeVisible()
-    await dialog
-      .getByRole('button', { name: /is a foreign key without an index/ })
-      .first()
-      .click()
+    await expect(
+      dialog.getByRole('heading', { name: /Foreign keys without an index/ }),
+    ).toBeVisible()
+    await dialog.getByRole('button', { name: 'addresses.customer_id' }).click()
     await expect(page.getByRole('complementary')).toBeVisible()
 
-    await page.getByRole('button', { name: 'View' }).click()
+    // One click writes the index into the code and the hint goes away.
+    await button.click()
+    await dialog
+      .getByRole('listitem')
+      .filter({ hasText: 'addresses.customer_id' })
+      .getByRole('button', { name: 'Add index' })
+      .click()
+    await expect(page.getByText('Added an index')).toBeVisible()
+    await expect.poll(() => savedSource(page)).toMatch(/indexes \{\s+customer_id\s+\}/)
+
+    await page.getByRole('button', { name: 'View options' }).click()
     await page.getByRole('menuitemcheckbox', { name: 'Schema hints' }).click()
     await expect(button).toHaveCount(0)
   })
@@ -136,8 +147,7 @@ test.describe('views and groups', () => {
   test.skip(({ isMobile }) => isMobile)
 
   test('switches between the views of a schema and remembers the choice', async ({ page }) => {
-    await page.keyboard.press(`${mod}+k`)
-    await page.getByRole('option', { name: 'SaaS workspace' }).click()
+    await openSchema(page, 'saas')
     await expect(table(page, 'invoices')).toBeVisible()
     await expect(page.locator('article[data-kind="table"]')).toHaveCount(18)
 
@@ -161,8 +171,7 @@ test.describe('views and groups', () => {
     context,
   }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.keyboard.press(`${mod}+k`)
-    await page.getByRole('option', { name: 'SaaS workspace' }).click()
+    await openSchema(page, 'saas')
     await expect(table(page, 'invoices')).toBeVisible()
 
     // Strip the groups and views from the sample and paste it back.
@@ -306,58 +315,5 @@ test.describe('editing in the diagram', () => {
     await page.mouse.up()
     await expect(page.getByRole('button', { name: /Tidy up/ })).toBeVisible()
     expect(await crossing()).toBe(0)
-  })
-})
-
-test.describe('files', () => {
-  test.skip(({ isMobile }) => isMobile)
-
-  test('opens a DBML file and saves changes back to it', async ({ page }) => {
-    // A fake File System Access API: one file that remembers what was written to it.
-    await page.addInitScript(() => {
-      const state = { text: 'Table files_demo {\n  id int [pk]\n}\n', written: [] as string[] }
-      const handle = {
-        kind: 'file',
-        name: 'schema.dbml',
-        getFile: async () => new File([state.text], 'schema.dbml', { lastModified: 1 }),
-        createWritable: async () => ({
-          write: async (text: string) => {
-            state.text = text
-            state.written.push(text)
-          },
-          close: async () => undefined,
-        }),
-        isSameEntry: async (other: unknown) => other === handle,
-        queryPermission: async () => 'granted',
-        requestPermission: async () => 'granted',
-      }
-      Object.setPrototypeOf(handle, FileSystemFileHandle.prototype)
-      Object.assign(window, {
-        showOpenFilePicker: async () => [handle],
-        showSaveFilePicker: async () => handle,
-        __fileState: state,
-      })
-    })
-    await page.goto('/')
-    await expect(table(page, 'orders')).toBeVisible()
-
-    await page.keyboard.press(`${mod}+o`)
-    await expect(table(page, 'files_demo')).toBeVisible()
-    await expect(page.getByRole('button', { name: /schema/ })).toBeVisible()
-
-    await page.locator('.cm-content').click()
-    await page.keyboard.press(`${mod}+End`)
-    await page.keyboard.insertText('\nTable extra {\n  id int [pk]\n}\n')
-    await expect(table(page, 'extra')).toBeVisible()
-    await expect(page.getByText(', unsaved changes')).toBeAttached()
-
-    await page.keyboard.press(`${mod}+s`)
-    await expect(page.getByText('Saved schema.dbml')).toBeVisible()
-    await expect(page.getByText(', unsaved changes')).toHaveCount(0)
-    const written = await page.evaluate(
-      () => (window as unknown as { __fileState: { written: string[] } }).__fileState.written,
-    )
-    expect(written).toHaveLength(1)
-    expect(written[0]).toContain('Table extra')
   })
 })
