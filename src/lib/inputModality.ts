@@ -17,5 +17,19 @@ export function trackInputModality(): void {
     true,
   )
   window.addEventListener('pointerdown', () => set('pointer'), true)
-  window.addEventListener('pointermove', () => set('pointer'), true)
+  // Chrome also reports a move when content changes under a resting pointer, for example
+  // when a menu highlights the next row. Only a real change of position counts as using
+  // the mouse, so the keyboard ring does not vanish under a pointer that never moved.
+  let lastX = Number.NaN
+  let lastY = Number.NaN
+  window.addEventListener(
+    'pointermove',
+    (event) => {
+      if (event.clientX === lastX && event.clientY === lastY) return
+      lastX = event.clientX
+      lastY = event.clientY
+      set('pointer')
+    },
+    true,
+  )
 }
