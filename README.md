@@ -33,6 +33,12 @@ once with `pnpm exec playwright install chromium`.
 - Export as PNG, SVG, SQL or DBML, import from SQL
 - Light and dark theme, usable with the keyboard
 
+## Deploy
+
+The build is static. AWS Amplify builds `main` with `amplify.yml`, which installs Node 22
+and pnpm 12 before `pnpm build` and publishes `dist/`. Any host that serves static files
+works the same way: `pnpm install --frozen-lockfile && pnpm build`, then upload `dist/`.
+
 ## Scripts
 
 | Command              | Purpose                                          |

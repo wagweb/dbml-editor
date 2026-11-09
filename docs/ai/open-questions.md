@@ -6,9 +6,9 @@ Answer here, then move the answer to `decisions.md`.
    storage keys `keyline:*`). Keep it or rename?
 2. **ESLint or oxlint.** The company guideline lists ESLint and Prettier as base hygiene.
    The repo uses oxlint, the default of the current Vite template. Switch to ESLint?
-3. **Hosting.** The guideline asks for an online dev and test environment. Nothing is
-   deployed yet. The build is static (`dist/`); where should it run?
-4. **Sentry and SonarQube.** Not set up, since there is no deployment. Needed once hosted?
+3. **Hosting.** Decided: AWS Amplify, see decision 35. Still open: a separate dev or test
+   environment (a second Amplify branch?) and a custom domain.
+4. **Sentry and SonarQube.** Not set up yet. Needed now that the app is hosted?
 5. **DBML features still without a visual.** `checks`, `Dep` and multi-file projects are
    accepted by the parser and ignored by the diagram. Sticky notes, enums, `Records` and
    `DiagramView` are drawn since decision 24.

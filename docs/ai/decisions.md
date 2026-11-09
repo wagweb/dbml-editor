@@ -121,3 +121,9 @@ with `(revised by #N)`.
 34. **2026-11-09: A click does not move the camera while most of the table is on screen.**
     Keyboard and search still bring the table fully into view; a pointer click only pans
     when less than half of the table is visible, so a double-click lands where it started.
+35. **2026-11-09: Hosted on AWS Amplify.** The static build (`dist/`) is deployed by AWS
+    Amplify from the GitHub repository `wagweb/dbml-editor`, branch `main`. `amplify.yml`
+    installs Node 22 and pnpm 12 (the build image ships neither pnpm nor a new enough
+    Node), caches the pnpm store, and publishes `dist/`. `package.json` names the Node range for the same reason; the
+    pnpm version is pinned in `amplify.yml` only, because a `packageManager` field makes
+    pnpm 12 list its own binaries for every platform in the lockfile.

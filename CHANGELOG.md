@@ -49,6 +49,9 @@
 
 ### Changed
 
+- Build configuration for AWS Amplify (`amplify.yml`): Node 22 and pnpm 12 are installed
+  before the build, the pnpm store is cached, `dist/` is published.
+
 - Header search: label centred on its letters, shortcut shown as a keycap, clearer hover
   state; the palette input got a search icon and an Esc keycap.
 - New app icon: two overlapping table frames on a rounded black or white tile that flips
