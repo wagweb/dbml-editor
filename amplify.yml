@@ -1,0 +1,22 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # Vite 8 needs Node 20.19 or newer; the build image does not ship pnpm.
+        - nvm install 22
+        - nvm use 22
+        - npm install -g pnpm@12.5.1
+        - pnpm config set store-dir .pnpm-store
+        - pnpm install --frozen-lockfile
+    build:
+      commands:
+        - pnpm build
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - .pnpm-store/**/*
+      - node_modules/**/*
