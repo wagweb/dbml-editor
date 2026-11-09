@@ -1,0 +1,227 @@
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { SAMPLES, STARTER_SOURCE } from '@/dbml/samples'
+import type { StoredRoute } from '@/layout/elk'
+import type { DetailLevel } from '@/layout/geometry'
+import type { Point } from '@/layout/router'
+import { getOwn } from '@/lib/record'
+import { createDebouncedStorage } from '@/lib/storage'
+import { useUi } from './ui'
+
+export interface DiagramLayout {
+  positions: Record<string, Point>
+  routes: Record<string, StoredRoute>
+  /** Fingerprint of the structure the stored layout belongs to. */
+  signature: string | null
+  /** False once tables were arranged by hand; new tables are then placed incrementally. */
+  auto: boolean
+  detail: DetailLevel
+}
+
+export interface DiagramDocument {
+  id: string
+  name: string
+  source: string
+  createdAt: number
+  updatedAt: number
+  layout: DiagramLayout
+}
+
+interface DocumentsState {
+  documents: Record<string, DiagramDocument>
+  activeId: string
+  /** Counts replacements of the open diagram by another browser tab. Not persisted. */
+  externalRevision: number
+
+  create: (init?: { name?: string; source?: string }) => string
+  open: (id: string) => void
+  rename: (id: string, name: string) => void
+  duplicate: (id: string) => string | null
+  remove: (id: string) => void
+  /** Puts a removed document back, e.g. when a deletion is undone. */
+  restore: (doc: DiagramDocument) => void
+  setSource: (source: string) => void
+  saveLayout: (layout: Partial<DiagramLayout>) => void
+}
+
+export const EMPTY_LAYOUT: DiagramLayout = {
+  positions: {},
+  routes: {},
+  signature: null,
+  auto: true,
+  detail: 'full',
+}
+
+function newId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function newDocument(name: string, source: string): DiagramDocument {
+  const now = Date.now()
+  return { id: newId(), name, source, createdAt: now, updatedAt: now, layout: EMPTY_LAYOUT }
+}
+
+function uniqueName(base: string, documents: Record<string, DiagramDocument>): string {
+  const taken = new Set(Object.values(documents).map((d) => d.name))
+  if (!taken.has(base)) return base
+  for (let n = 2; ; n += 1) {
+    const candidate = `${base} ${n}`
+    if (!taken.has(candidate)) return candidate
+  }
+}
+
+const first = newDocument(SAMPLES[0]!.name, SAMPLES[0]!.source)
+
+const STORAGE_KEY = 'keyline:documents'
+
+let saveFailureReported = false
+
+/** Tells the user once that nothing is being saved, instead of failing silently. */
+function reportSaveFailure(): void {
+  if (saveFailureReported) return
+  saveFailureReported = true
+  useUi.getState().showToast({
+    text: 'Changes could not be saved in this browser. Export the diagram to keep it.',
+    tone: 'error',
+  })
+}
+
+export const useDocuments = create<DocumentsState>()(
+  persist(
+    (set, get) => {
+      const patchActive = (patch: (doc: DiagramDocument) => Partial<DiagramDocument>) => {
+        const { documents, activeId } = get()
+        const active = documents[activeId]
+        if (!active) return
+        set({ documents: { ...documents, [activeId]: { ...active, ...patch(active) } } })
+      }
+
+      return {
+        documents: { [first.id]: first },
+        activeId: first.id,
+        externalRevision: 0,
+
+        create: (init) => {
+          const { documents } = get()
+          const doc = newDocument(
+            uniqueName(init?.name?.trim() || 'Untitled diagram', documents),
+            init?.source ?? STARTER_SOURCE,
+          )
+          set({ documents: { ...documents, [doc.id]: doc }, activeId: doc.id })
+          return doc.id
+        },
+
+        open: (id) => {
+          if (get().documents[id]) set({ activeId: id })
+        },
+
+        rename: (id, name) => {
+          const { documents } = get()
+          const doc = documents[id]
+          const trimmed = name.trim()
+          if (!doc || !trimmed || trimmed === doc.name) return
+          set({
+            documents: { ...documents, [id]: { ...doc, name: trimmed, updatedAt: Date.now() } },
+          })
+        },
+
+        duplicate: (id) => {
+          const { documents } = get()
+          const source = documents[id]
+          if (!source) return null
+          const copy: DiagramDocument = {
+            ...newDocument(uniqueName(`${source.name} copy`, documents), source.source),
+            layout: source.layout,
+          }
+          set({ documents: { ...documents, [copy.id]: copy }, activeId: copy.id })
+          return copy.id
+        },
+
+        remove: (id) => {
+          const { documents, activeId } = get()
+          if (!documents[id]) return
+          const rest = { ...documents }
+          delete rest[id]
+          if (Object.keys(rest).length === 0) {
+            const fresh = newDocument('Untitled diagram', STARTER_SOURCE)
+            set({ documents: { [fresh.id]: fresh }, activeId: fresh.id })
+            return
+          }
+          const next =
+            activeId === id
+              ? Object.values(rest).sort((a, b) => b.updatedAt - a.updatedAt)[0]!.id
+              : activeId
+          set({ documents: rest, activeId: next })
+        },
+
+        restore: (doc) =>
+          set({ documents: { ...get().documents, [doc.id]: doc }, activeId: doc.id }),
+
+        setSource: (source) =>
+          patchActive((doc) => (doc.source === source ? {} : { source, updatedAt: Date.now() })),
+
+        saveLayout: (layout) => patchActive((doc) => ({ layout: { ...doc.layout, ...layout } })),
+      }
+    },
+    {
+      name: STORAGE_KEY,
+      version: 1,
+      storage:
+        createDebouncedStorage<Pick<DocumentsState, 'documents' | 'activeId'>>(reportSaveFailure),
+      partialize: (state) => ({ documents: state.documents, activeId: state.activeId }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<DocumentsState> | undefined
+        const documents = saved?.documents
+        if (!documents || Object.keys(documents).length === 0) return current
+        const activeId =
+          saved.activeId && documents[saved.activeId] ? saved.activeId : Object.keys(documents)[0]!
+        return { ...current, documents, activeId }
+      },
+    },
+  ),
+)
+
+export function sortedDocuments(documents: Record<string, DiagramDocument>): DiagramDocument[] {
+  return Object.values(documents).sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/**
+ * Every tab writes the whole document list, so without this the last writer would win and
+ * a diagram created in another tab (for example from a share link) could be lost. Newer
+ * and unknown documents from the other tab are taken over. Deletions are not propagated.
+ */
+function mergeFromOtherTab(raw: string): void {
+  let incoming: unknown
+  try {
+    incoming = (JSON.parse(raw) as { state?: { documents?: unknown } }).state?.documents
+  } catch {
+    return
+  }
+  if (typeof incoming !== 'object' || incoming === null) return
+
+  const { documents, activeId, externalRevision } = useDocuments.getState()
+  const merged = { ...documents }
+  let changed = false
+  let activeReplaced = false
+  for (const [id, doc] of Object.entries(incoming as Record<string, DiagramDocument>)) {
+    if (typeof doc?.source !== 'string' || typeof doc.updatedAt !== 'number') continue
+    const local = getOwn(documents, id)
+    if (local && local.updatedAt >= doc.updatedAt) continue
+    merged[id] = doc
+    changed = true
+    if (id === activeId) activeReplaced = true
+  }
+  if (!changed) return
+  useDocuments.setState({
+    documents: merged,
+    externalRevision: activeReplaced ? externalRevision + 1 : externalRevision,
+  })
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY && event.newValue) mergeFromOtherTab(event.newValue)
+  })
+}

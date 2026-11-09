@@ -10,3 +10,5 @@
 - Automatic layout: left to right by reference direction, column-level connection points,
   orthogonal routes, groups as regions, wrapping of weakly related groups to fit the
   screen.
+- Several diagrams stored in the browser, with examples to start from.
+- Manual mode after dragging a table, with "Tidy up" and undo.
