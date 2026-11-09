@@ -1,9 +1,10 @@
 import { Maximize, Minus, Plus, Workflow, ZoomIn } from 'lucide-react'
 import { arrangeWithUndo } from '@/app/actions'
 import { DETAIL_LEVELS } from '@/app/constants'
+import { cn } from '@/lib/cn'
 import { fitContent, setDetail, useDiagram } from '@/store/diagram'
 import { FAR_ZOOM, READABLE_ZOOM, useViewport, zoomAt, zoomTo } from '@/store/viewport'
-import { Button, IconButton } from '@/ui/Button'
+import { IconButton } from '@/ui/Button'
 import { Segmented } from '@/ui/Segmented'
 import { Tooltip } from '@/ui/Tooltip'
 
@@ -67,27 +68,35 @@ export function CanvasToolbar() {
 
       <span aria-hidden className="mx-1 h-5 w-px bg-line max-sm:hidden" />
 
-      {namesOnly ? (
-        // Saying "all columns" while none are drawn would be a lie; offer the way back.
-        <Tooltip label="Columns are hidden below 50% zoom">
-          <Button
-            variant="ghost"
-            className="h-8 px-2.5 text-xs max-sm:hidden"
-            onClick={() => zoomTo(READABLE_ZOOM, { animate: true })}
-          >
-            <ZoomIn aria-hidden className="size-4" />
-            Show columns
-          </Button>
-        </Tooltip>
-      ) : (
-        <Segmented
-          label="Column detail"
-          className="max-sm:hidden"
-          value={detail}
-          options={DETAIL_LEVELS}
-          onChange={(next) => void setDetail(next)}
-        />
-      )}
+      {/*
+        Both live in one grid cell and only their visibility changes, so the toolbar keeps
+        its width when the zoom crosses 50%. The switch stays mounted, so its thumb does not
+        slide in from nowhere on the way back.
+      */}
+      <div className="grid max-sm:hidden">
+        <div className={cn('[grid-area:1/1]', namesOnly && 'invisible')}>
+          <Segmented
+            label="Column detail"
+            className="w-full"
+            value={detail}
+            options={DETAIL_LEVELS}
+            onChange={(next) => void setDetail(next)}
+          />
+        </div>
+        <div className={cn('[grid-area:1/1]', !namesOnly && 'invisible')}>
+          {/* Saying "all columns" while none are drawn would be a lie; offer the way back. */}
+          <Tooltip label="Columns are hidden below 50% zoom">
+            <button
+              type="button"
+              className="flex h-8 w-full items-center justify-center gap-1.5 rounded-control bg-fill px-3 text-xs font-medium whitespace-nowrap text-ink-2 transition-colors duration-150 select-none hover:bg-fill-strong hover:text-ink active:bg-fill-strong"
+              onClick={() => zoomTo(READABLE_ZOOM, { animate: true })}
+            >
+              <ZoomIn aria-hidden className="size-4" />
+              Show columns
+            </button>
+          </Tooltip>
+        </div>
+      </div>
     </div>
   )
 }
