@@ -30,8 +30,16 @@ once with `pnpm exec playwright install chromium`.
 - Several diagrams, saved in the browser, or open and save `.dbml` files; share one as a
   link without a server
 - Start by pasting or dropping DBML or SQL anywhere
-- Schema hints: missing primary keys, unindexed foreign keys, type mismatches
-- Export as PNG, SVG, SQL or DBML, import from SQL
+- Schema hints with one-click fixes: missing primary keys, unindexed foreign keys, type
+  mismatches, names that break the pattern
+- Copy a SQL query that joins the tables along a path
+- Code formatting (Shift + Alt + F) with spaces or tabs; the indentation of pasted and
+  opened files is kept; block templates, folding and wrapped long lines in the editor
+- The code cursor marks its table, column and relations in the diagram
+- Export as PNG, SVG, SQL, DBML, Markdown with a Mermaid diagram, or copy Mermaid for
+  GitHub; import from SQL
+- View-only links for docs and tickets, and a presentation mode that walks through the
+  groups
 - Light and dark theme, usable with the keyboard
 
 ## Deploy

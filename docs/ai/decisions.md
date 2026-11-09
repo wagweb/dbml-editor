@@ -213,3 +213,54 @@ with `(revised by #N)`.
     menu: the menu box was aligned with its button, but the 1 px ring of `--shadow-pop`
     sits outside the box and stuck out. Menus and the hints popover are offset by that
     ring, so the visible edge lines up with the button.
+52. **2026-11-10: Nested corners are concentric.** Reported by Niklas on the view menu:
+    a 6 px hover fill inside a 12 px menu with 4 px padding did not follow the menu's
+    corner. Rows in menus are now 8 px; toasts are 12 px, the stale banner 10 px, and the
+    headers of the details panel and the hints popover keep their buttons 6 px from the
+    edge. The rule is in `design-language.md`.
+53. **2026-11-10: A path ends in a query.** The path section offers "Copy SQL query": one
+    join per relation step, the joined table named first in each condition, aliases from
+    initials that avoid keywords, and other relations between the same two tables named
+    in a comment. Plain ANSI quoting; a dialect setting was not worth it.
+54. **2026-11-10: Documentation exports.** Markdown (a data dictionary with the diagram
+    as Mermaid, grouped by TableGroup) and Mermaid alone, copied with its fence because
+    it goes into Markdown on GitHub. Mermaid entity and attribute names are sanitised and
+    names Mermaid reads as keywords get a leading underscore.
+55. **2026-11-10: The code cursor points into the diagram.** The cursor's column row is
+    tinted and all relations of that column are drawn in the accent, so `customers.id`
+    shows who points at it. Only a cursor jump moves the camera, never typing.
+56. **2026-11-10: Formatting and indentation.** Asked for by Niklas: a formatter with
+    spaces or tabs and a width, and the indentation of pasted or opened code detected
+    automatically. Each diagram keeps its own indentation; the view menu sets it for the
+    open diagram and as the default for new ones, and offers to format right away. The
+    formatter indents by brackets, aligns column names and types inside Table and
+    TablePartial bodies (the settings column only over lines that have settings), always
+    pads with spaces so alignment survives any tab width, leaves multi-line strings,
+    comments and backtick expressions alone, and refuses when the result would parse to a
+    different schema. Detection counts steps from unindented lines too and needs a 75%
+    majority of tabs or spaces.
+57. **2026-11-10: Hints come with fixes.** Add index, use `id` as key or add an `id`
+    column in the type the other keys use, take over the referenced type, rename into the
+    schema's naming style. Offered in the code tooltip, the lint panel and the hints list.
+58. **2026-11-10: Block templates.** At the top level, Table, Enum, Ref, TableGroup and
+    Note complete to templates with placeholders. Tab accepts a suggestion, as in most
+    editors.
+59. **2026-11-10: Tips for hidden gestures.** Shift-click, double-click and the row's dot
+    are not findable by looking. One tip per visit, each once, shown after a table click.
+    End-to-end tests start with all tips seen (`skipTips`).
+60. **2026-11-10: Presentation mode.** P on the diagram, the view menu or the palette.
+    Stops are the written groups, else the suggested ones, else the twelve best connected
+    tables with their neighbours. Arrow keys step, Escape or leaving full screen ends it.
+61. **2026-11-10: View-only links.** For docs and tickets: the link opens the diagram
+    without code, editing is off, nothing is stored in the visitor's browser until "Open
+    in editor".
+62. **2026-11-10: The editor wraps.** Reported by Niklas: code scrolled sideways under the
+    transparent line numbers, and the trackpad's rubber band moved them. Lines now wrap
+    with a hanging indent (switchable), the gutter is opaque, sideways overscroll is off,
+    and indentation guides and block folding were added.
+63. **2026-11-10: The details panel is rebuilt.** Asked for by Niklas, who also found
+    "Show Direct / 2 steps" hard to understand. Columns are scannable one-liners that
+    open for their details and actions; long names wrap instead of truncating; nullable is
+    marked instead of "not null" on nearly every row. The reach of the highlight moved to
+    the Relations tab, with counts and the list of the tables it adds, so the setting
+    explains itself by what it shows. Moving and the path question moved to a footer.

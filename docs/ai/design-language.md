@@ -53,6 +53,11 @@ Rules:
 
 - No one-sided coloured borders on rounded elements. They read as a decoration that got
   cut off. An emphasis either goes all the way round or uses another device.
+- Nested corners are concentric: inner radius = outer radius minus the inset. Menus are
+  12 px with 4 px padding, so their rows are 8 px; the toolbar is 10 px with 4 px padding
+  around 6 px buttons; the palette is 12 px around 6 px rows at 6 px; a toast is 12 px
+  around 6 px buttons; the switch is 6 px around a 4 px thumb. Buttons that sit near a
+  panel corner keep 6 px from its edge.
 - The active row in a menu gets a quiet fill. While the keyboard is in use it also gets
   the accent ring all round (`keyboard:` variant, fed by `src/lib/inputModality.ts`).
   `:focus-visible` is not enough here, because menus move focus on hover.
@@ -75,6 +80,54 @@ Rules:
   the chain stays sharp, everything else goes grey. The details panel lists the steps.
 - A column found by search flashes once (`row-flash`, accent soft fill and ring), on the
   card and in the details.
+
+## Details panel
+
+- 352 px wide. The name is never truncated, it wraps. Group (with its colour) and alias
+  are chips under it; the table note follows as plain text.
+- Tabs in the switch's look (`TabList` in `src/ui/Segmented.tsx`): Columns, Relations,
+  and Indexes or Data only when there are any. Counts sit in the tab in the tab's text
+  colour, quieter by weight. The open tab stays when another table is selected.
+- A column is one line: key mark, full name, type. A `?` after the type marks a column
+  that may be null; "not null" is the common case and stays unsaid. A note shows as a
+  small icon. A click opens the rest (constraints, default, enum values, what it points
+  at and what uses it) with Rename, Add relation and Show in code.
+- Relations name what the diagram lights: "Highlight" with Direct and 2 steps and the
+  number of tables each lights, then References, Referenced by and, at two steps, the
+  added tables. Cardinality is read from this table's side (`n:1`, `1:n`). Pointing at a
+  relation lights its line.
+- Rows are inset, rounded fills like menu rows, with the keyboard ring all round.
+- The footer holds what is not about the content: Path to another table, and Move with
+  four arrows (the pointer-free alternative to dragging).
+
+## Code editor
+
+- Long lines wrap with a hanging indent: a wrapped line continues one level deeper than
+  it started. Wrapping can be turned off in the view menu.
+- A hairline per indentation level (`--indent-guide`), drawn as a background of the line.
+- The line number gutter is opaque (`--panel`) and the scroller has no sideways rubber
+  band, so code never shows through or under the numbers.
+- Fold arrows sit between the numbers and the code and appear while the pointer is over
+  the margin; a folded block shows a small `…` pill.
+- The code cursor marks its column row on the card with a light accent tint and draws
+  the relations of that column in the accent. No ring, so it never competes with a
+  selection.
+- A hint's fix is a small secondary button in the hint tooltip and in the hints list.
+
+## Teaching gestures
+
+- One tip per visit, each tip once, right after a table is clicked: shift-click for paths,
+  double-click to rename, the row's dot for relations. A small floating surface above the
+  toolbar with a lightbulb in the accent and "Got it"; it leaves with the selection.
+
+## Presentation and view-only links
+
+- Presenting shows the diagram alone. A bar at the bottom in the toolbar's style has
+  previous, the stop's name with "2 of 5", next and "Exit" with its key. A note of the
+  group or table sits above the bar.
+- A view-only diagram shows its name with a "View only" pill in the header, "Present",
+  "Export" (secondary) and "Open in editor" (primary). Nothing on the canvas can be
+  edited: no rename, no relation handles, no "add to code".
 
 ## Start screen
 

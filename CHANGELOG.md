@@ -47,7 +47,27 @@
 - Enums as cards linked to the columns that use them, sticky notes as cards, sample rows
   from `Records` in the details panel. The examples show all three.
 
+- "Copy SQL query" for a path between two tables: one join per relation step.
+- Export as Markdown (a data dictionary with a Mermaid diagram) and copy as Mermaid.
+- Code formatting with Shift + Alt + F, spaces or tabs and their width in the view menu;
+  pasted and opened code keeps its indentation.
+- Fixes for schema hints in the code tooltip, the lint panel and the hints list.
+- Block templates for Table, Enum, Ref, TableGroup and Note; Tab accepts a suggestion.
+- Folding of blocks, indentation guides and wrapped long lines in the editor.
+- The code cursor tints its column on the card and lights that column's relations; a
+  cursor jump brings an off-screen table into view.
+- Presentation mode (P): the diagram alone, group by group.
+- View-only links that open without code and are not stored until "Open in editor".
+- One-time tips for shift-click, double-click to rename and dragging a relation.
+
 ### Changed
+
+- The details panel has tabs (Columns, Relations, Indexes, Data). Columns are one line
+  each and open for their details and actions; relations show how far the highlight
+  reaches, with counts and the tables it adds; moving and paths sit in a footer.
+- Header controls are spaced evenly by what is visible: 18 px between every edge.
+- The editor's fold arrows sit right at the code; problem dots moved left of the line
+  numbers and are coloured, round for errors and diamonds for warnings.
 
 - No more built-in examples. Without a diagram the app shows a start screen: new diagram,
   open a .dbml file, import SQL, or paste or drop DBML or SQL anywhere. Deleting the last
@@ -81,6 +101,10 @@
   SQL dialogs on a phone the four databases sit in two rows.
 
 ### Fixed
+
+- Code that scrolled sideways showed through the line numbers, and the trackpad's rubber
+  band moved them.
+- Hover fills in menus did not follow the menu's rounded corners.
 
 - Table names no longer outgrow their table when zooming far out. Below 24% zoom the
   group names label their regions instead.

@@ -5,17 +5,17 @@ CodeMirror 6. No backend.
 
 ## Modules
 
-| Path                        | Responsibility                                                                                                                                                                                                                                                         | Depends on                         |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `src/dbml/`                 | Parse DBML into the app model (`model.ts`, `parse.ts`), derive what is shown (`derive.ts`), graph questions (`graph.ts`), community detection (`communities.ts`), schema hints (`hints.ts`), text edits (`edit.ts`), the starter for new diagrams, lazy SQL conversion | `@dbml/parse`, `@dbml/core` (lazy) |
-| `src/layout/`               | Pure geometry and layout: card metrics, orientation, ELK graph, routes, avoiding router (`avoid.ts`)                                                                                                                                                                   | `dbml/model`                       |
-| `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui`                                                                                                                                                                       | `dbml`, `layout`                   |
-| `src/editor/`               | CodeMirror setup, DBML highlighting, completion adapter, `bridge.ts`                                                                                                                                                                                                   | `store`, `dbml`                    |
-| `src/canvas/`               | Diagram rendering and pointer or keyboard input, inline renaming, relation dragging (`linkDrag.ts`)                                                                                                                                                                    | `store`, `layout`                  |
-| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), files (`fileActions.ts`)                                                                                                                                                | everything above                   |
-| `src/ui/`                   | Small styled wrappers around Radix primitives, `InlineEdit`                                                                                                                                                                                                            | none                               |
-| `src/lib/`                  | Platform helpers, storage adapter, File System Access wrapper (`files.ts`)                                                                                                                                                                                             | none                               |
-| `src/export/`, `src/share/` | SVG and PNG export, share link encoding                                                                                                                                                                                                                                | `layout`, `store`                  |
+| Path                        | Responsibility                                                                                                                                                                                                                                                                                                                                                        | Depends on                         |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `src/dbml/`                 | Parse DBML into the app model (`model.ts`, `parse.ts`), derive what is shown (`derive.ts`), graph questions (`graph.ts`), community detection (`communities.ts`), schema hints (`hints.ts`) and their fixes (`fixes.ts`), text edits (`edit.ts`), formatting and indentation detection (`format.ts`), join queries (`joinQuery.ts`), the starter, lazy SQL conversion | `@dbml/parse`, `@dbml/core` (lazy) |
+| `src/layout/`               | Pure geometry and layout: card metrics, orientation, ELK graph, routes, avoiding router (`avoid.ts`)                                                                                                                                                                                                                                                                  | `dbml/model`                       |
+| `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui`                                                                                                                                                                                                                                                                      | `dbml`, `layout`                   |
+| `src/editor/`               | CodeMirror setup, DBML highlighting, completion and block templates, folding, indent guides and wrapping (`blocks.ts`), `bridge.ts`                                                                                                                                                                                                                                   | `store`, `dbml`                    |
+| `src/canvas/`               | Diagram rendering and pointer or keyboard input, inline renaming, relation dragging (`linkDrag.ts`)                                                                                                                                                                                                                                                                   | `store`, `layout`                  |
+| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), code actions (`codeActions.ts`), files (`fileActions.ts`), presentation (`present.ts`), one-time tips (`tips.ts`)                                                                                                                                                      | everything above                   |
+| `src/ui/`                   | Small styled wrappers around Radix primitives, `InlineEdit`                                                                                                                                                                                                                                                                                                           | none                               |
+| `src/lib/`                  | Platform helpers, storage adapter, File System Access wrapper (`files.ts`)                                                                                                                                                                                                                                                                                            | none                               |
+| `src/export/`, `src/share/` | SVG and PNG export, Markdown and Mermaid export, share link encoding (with a view-only flag)                                                                                                                                                                                                                                                                          | `layout`, `store`                  |
 
 `src/layout/` and `src/dbml/` hold no React and no DOM access (except `measure.ts` and
 `engine.ts`), which is why they are unit tested in Node.
@@ -62,7 +62,13 @@ of the older model on screen.
 - `viewport`: camera and canvas size. Applied to the DOM imperatively in `Canvas.tsx`, so
   panning does not re-render React.
 - `ui`: theme, panel sizes, view options (enum cards, suggested groups, hints, focus
-  depth), open dialog, palette mode, toast. Preferences persisted under `keyline:ui`.
+  depth), default indentation and line wrapping, open dialog, palette mode, toast.
+  Preferences persisted under `keyline:ui`. Not persisted: `viewer` (a diagram from a
+  view-only link) and `presenting` with its current stop.
+- Documents carry their own `indent`, detected from the text they were created from or
+  chosen in the view menu. `shownDiagram()` returns the open document or the view-only
+  diagram, whichever is on screen; exports read it.
+- Tips that were shown are remembered under `keyline:tips`, outside the stores.
 
 High-frequency updates (drag, hover, pan) reach components through narrow selectors.
 `TableNode` subscribes to its own position and to precomputed emphasis strings only.
@@ -70,7 +76,23 @@ High-frequency updates (drag, hover, pan) reach components through narrow select
 ## Editor and canvas talk through `bridge.ts`
 
 The canvas calls `revealInEditor(range)` and menus call `replaceEditorText`. The editor
-reports the cursor position, which marks the table under the cursor on the canvas.
+reports the cursor position; `setCursorOffset` marks the table, the column and every
+relation of that column (or the relation defined there). When the cursor jumps without a
+text change, the camera brings the table into view after 250 ms if it is off screen.
+
+Hint fixes (`fixes.ts`) are described cheaply for every hint (`describeFix`) and computed
+only when clicked (`fixEdits`), on the text as it is then; both the code tooltip and the
+status bar list use `editActions.applyHintFix`. Formatting goes through
+`codeActions.formatCode`, which applies the formatter's line edits as one transaction.
+
+## View-only links and presentation
+
+A share link with `v=1` sets `ui.viewer` instead of creating a document. `App.tsx` then
+opens a transient document (`id: 'view-only'`) through `openDocument`; layout saves are
+no-ops because no document is active, and `editActions` refuses edits (`isReadOnly`).
+"Open in editor" creates the document like an ordinary share link. Presenting hides the
+header and the code, `present.ts` computes the stops (groups, else hub tables) and frames
+them; full screen is requested and leaving it ends the presentation.
 
 ## Edits made in the diagram
 
