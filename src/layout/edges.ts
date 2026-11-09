@@ -1,9 +1,10 @@
 import type { Cardinality, RefModel, SchemaModel } from '@/dbml/model'
 import { getOwn } from '@/lib/record'
+import { crossesAny, routeAvoiding } from './avoid'
 import type { Side, StoredRoute } from './elk'
 import { routeSignature } from './elk'
 import { portOffsetY, type TableBox } from './geometry'
-import { roundedPath, routeBetween, routeSelf, type Anchor, type Point } from './router'
+import { roundedPath, routeSelf, type Anchor, type Point, type Rect } from './router'
 
 export interface EdgeEnd {
   tableId: string
@@ -36,12 +37,74 @@ export function computeEdges(
   positions: Readonly<Record<string, Point>>,
   routes: Readonly<Record<string, StoredRoute>>,
 ): EdgeGeometry[] {
+  const rects = placedRects(model, boxes, positions)
   const edges: EdgeGeometry[] = []
   for (const ref of model.refs) {
-    const edge = computeEdge(ref, boxes, positions, routes[ref.id])
+    const edge = computeEdge(ref, boxes, positions, getOwn(routes, ref.id), rects)
     if (edge) edges.push(edge)
   }
   return edges
+}
+
+/**
+ * Routes for tables arranged by hand. Routes from the layout engine stay as long as both
+ * ends sit where they were and no table has been moved onto the line; every other
+ * relation gets a route that goes around the tables in its way.
+ */
+export function refreshRoutes(
+  model: SchemaModel,
+  boxes: ReadonlyMap<string, TableBox>,
+  positions: Readonly<Record<string, Point>>,
+  routes: Readonly<Record<string, StoredRoute>>,
+): Record<string, StoredRoute> {
+  const rects = placedRects(model, boxes, positions)
+  const next: Record<string, StoredRoute> = {}
+  for (const ref of model.refs) {
+    if (ref.child.tableId === ref.parent.tableId) continue
+    const child = anchorOf(ref.child.tableId, ref.child.columns[0], boxes, positions)
+    const parent = anchorOf(ref.parent.tableId, ref.parent.columns[0], boxes, positions)
+    if (!child || !parent) continue
+    const others = obstacles(rects, ref)
+    const stored = getOwn(routes, ref.id)
+    if (stored && storedPoints(stored, ref, child, parent) && !crossesAny(stored.points, others)) {
+      next[ref.id] = stored
+      continue
+    }
+    const route = routeAvoiding(parent, child, others)
+    next[ref.id] = {
+      points: route.points,
+      startTableId: ref.parent.tableId,
+      startSide: route.startSide,
+      endSide: route.endSide,
+      signature: routeSignature(route.points[0]!, route.points.at(-1)!),
+    }
+  }
+  return next
+}
+
+function placedRects(
+  model: SchemaModel,
+  boxes: ReadonlyMap<string, TableBox>,
+  positions: Readonly<Record<string, Point>>,
+): Map<string, Rect> {
+  const rects = new Map<string, Rect>()
+  for (const table of model.tables) {
+    const box = boxes.get(table.id)
+    const position = getOwn(positions, table.id)
+    if (box && position) {
+      rects.set(table.id, { x: position.x, y: position.y, width: box.width, height: box.height })
+    }
+  }
+  return rects
+}
+
+/** Every placed card except the two a relation connects. */
+function obstacles(rects: ReadonlyMap<string, Rect>, ref: RefModel): Rect[] {
+  const result: Rect[] = []
+  for (const [id, rect] of rects) {
+    if (id !== ref.child.tableId && id !== ref.parent.tableId) result.push(rect)
+  }
+  return result
 }
 
 function computeEdge(
@@ -49,6 +112,7 @@ function computeEdge(
   boxes: ReadonlyMap<string, TableBox>,
   positions: Readonly<Record<string, Point>>,
   stored: StoredRoute | undefined,
+  rects: ReadonlyMap<string, Rect>,
 ): EdgeGeometry | null {
   const child = anchorOf(ref.child.tableId, ref.child.columns[0], boxes, positions)
   const parent = anchorOf(ref.parent.tableId, ref.parent.columns[0], boxes, positions)
@@ -66,7 +130,8 @@ function computeEdge(
       points = fromStored
       startsAtChild = stored.startTableId === ref.child.tableId
     } else {
-      points = routeBetween(parent, child)
+      // No engine route for this pair, for example while it is being dragged.
+      points = routeAvoiding(parent, child, obstacles(rects, ref)).points
       startsAtChild = false
     }
   }
@@ -94,7 +159,8 @@ function computeEdge(
     refId: ref.id,
     points,
     path: roundedPath(points),
-    markers: marker(start) + marker(end),
+    // The link from a column to its enum type is not a foreign key; it carries no cardinality.
+    markers: ref.kind === 'enum' ? '' : marker(start) + marker(end),
     start,
     end,
     startsAtChild,

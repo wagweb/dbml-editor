@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { shownModel } from '@/dbml/derive'
 import { parseDbml } from '@/dbml/parse'
-import { computeEdges } from './edges'
+import { crossesAny } from './avoid'
+import { computeEdges, refreshRoutes } from './edges'
 import { routeSignature, type StoredRoute } from './elk'
 import {
   approximateMeasure,
@@ -121,5 +123,104 @@ describe('computeEdges', () => {
     expect(edge!.points[0]!.x).toBe(right)
     expect(edge!.points.at(-1)!.x).toBe(right)
     expect(Math.max(...edge!.points.map((p) => p.x))).toBeGreaterThan(right)
+  })
+})
+
+describe('refreshRoutes', () => {
+  const { model, boxes } = setup(`
+Table users { id int [pk] }
+Table orders { id int [pk]
+  user_id int [ref: > users.id] }
+Table wall { id int [pk]
+  a int
+  b int
+  c int }
+`)
+  const ref = model.refs[0]!
+  const users = boxes.get('users')!
+  const orders = boxes.get('orders')!
+
+  it('keeps a stored route while it still fits and nothing sits on it', () => {
+    const positions = { users: { x: 0, y: 0 }, orders: { x: 400, y: 0 }, wall: { x: 0, y: 400 } }
+    const start = { x: users.width, y: portOffsetY(users, 'id') }
+    const end = { x: 400, y: portOffsetY(orders, 'user_id') }
+    const stored: StoredRoute = {
+      points: [start, { x: 200, y: start.y }, { x: 200, y: end.y }, end],
+      startTableId: 'users',
+      startSide: 'E',
+      endSide: 'W',
+      signature: routeSignature(start, end),
+    }
+    const routes = refreshRoutes(model, boxes, positions, { [ref.id]: stored })
+    expect(routes[ref.id]).toBe(stored)
+  })
+
+  it('finds a way round a table that was dropped onto the line', () => {
+    // The wall sits right between the two tables, across the straight line.
+    const positions = { users: { x: 0, y: 0 }, orders: { x: 600, y: 0 }, wall: { x: 250, y: -60 } }
+    const start = { x: users.width, y: portOffsetY(users, 'id') }
+    const end = { x: 600, y: portOffsetY(orders, 'user_id') }
+    const straight: StoredRoute = {
+      points: [start, { x: 300, y: start.y }, { x: 300, y: end.y }, end],
+      startTableId: 'users',
+      startSide: 'E',
+      endSide: 'W',
+      signature: routeSignature(start, end),
+    }
+    const routes = refreshRoutes(model, boxes, positions, { [ref.id]: straight })
+    const route = routes[ref.id]!
+    expect(route).not.toBe(straight)
+    const wall = {
+      x: 250,
+      y: -60,
+      width: boxes.get('wall')!.width,
+      height: boxes.get('wall')!.height,
+    }
+    expect(crossesAny(route.points, [wall])).toBe(false)
+    expect(routeSignature(route.points[0]!, route.points.at(-1)!)).toBe(route.signature)
+    // The edge layer draws exactly this route afterwards.
+    const [edge] = computeEdges(model, boxes, positions, routes)
+    expect(edge!.points).toEqual(route.points)
+  })
+
+  it('forgets routes of relations that are gone and skips unplaced tables', () => {
+    const routes = refreshRoutes(
+      model,
+      boxes,
+      { users: { x: 0, y: 0 } },
+      {
+        stale: {
+          points: [],
+          startTableId: 'x',
+          startSide: 'E',
+          endSide: 'W',
+          signature: '',
+        },
+      },
+    )
+    expect(routes).toEqual({})
+  })
+})
+
+describe('enum links', () => {
+  it('carry no cardinality markers', () => {
+    const { model, boxes } = setup(`
+Table users { id int [pk]
+  status user_status }
+Enum user_status { active }
+`)
+    const shown = shownModel(model, { view: null, enums: true, suggestGroups: false })
+    const refColumns = refColumnsByTable(shown)
+    const allBoxes = new Map(
+      shown.tables.map((t) => [
+        t.id,
+        boxes.get(t.id) ??
+          computeTableBox(t, 'full', approximateMeasure, refColumns.get(t.id) ?? new Set()),
+      ]),
+    )
+    const positions = { users: { x: 0, y: 0 }, 'enum:user_status': { x: 400, y: 0 } }
+    const [edge] = computeEdges(shown, allBoxes, positions, {})
+    expect(edge!.markers).toBe('')
+    expect(edge!.points.length).toBeGreaterThan(1)
   })
 })
