@@ -73,10 +73,15 @@ test.describe('relations at a glance', () => {
   test('widens the focus to two steps', async ({ page }) => {
     await select(page, 'countries')
     await expect(table(page, 'customers')).toHaveAttribute('data-dimmed', 'true')
-    await page.getByRole('radio', { name: '2 steps' }).click()
+    const panel = details(page, 'countries')
+    await panel.getByRole('tab', { name: /Relations/ }).click()
+    await page.getByRole('radio', { name: /2 steps/ }).click()
     await expect(table(page, 'customers')).toHaveAttribute('data-dimmed', 'false')
     await expect(table(page, 'orders')).toHaveAttribute('data-dimmed', 'false')
     await expect(table(page, 'products')).toHaveAttribute('data-dimmed', 'true')
+    // The panel names the tables the wider highlight adds.
+    await expect(panel.getByRole('heading', { name: 'Two steps away' })).toBeVisible()
+    await expect(panel.getByRole('button', { name: 'orders', exact: true })).toBeVisible()
   })
 
   test('draws enums and notes as cards and lists their details', async ({ page }) => {
@@ -99,6 +104,7 @@ test.describe('relations at a glance', () => {
   test('shows sample rows from Records', async ({ page }) => {
     await table(page, 'countries').click()
     const panel = details(page, 'countries')
+    await panel.getByRole('tab', { name: 'Data' }).click()
     await expect(panel.getByRole('heading', { name: 'Sample rows' })).toBeVisible()
     await expect(panel.getByRole('cell', { name: 'Germany' })).toBeVisible()
   })
@@ -233,6 +239,8 @@ test.describe('editing in the diagram', () => {
     await expect(table(page, 'orders')).toContainText('amount_cents')
 
     const panel = details(page, 'orders')
+    // Opening a column in the details offers its actions.
+    await panel.getByRole('button', { name: /^placed_at/ }).click()
     await panel.getByRole('button', { name: 'Rename placed_at' }).click()
     await page.getByRole('textbox', { name: 'Column name' }).fill('ordered_at')
     await page.keyboard.press('Enter')
@@ -240,6 +248,7 @@ test.describe('editing in the diagram', () => {
     await expect.poll(() => savedSource(page)).toContain('ordered_at timestamptz')
 
     // A name that is already taken is refused.
+    await panel.getByRole('button', { name: /^ordered_at/ }).click()
     await panel.getByRole('button', { name: 'Rename ordered_at' }).click()
     await page.getByRole('textbox', { name: 'Column name' }).fill('id')
     await page.keyboard.press('Enter')
@@ -265,6 +274,9 @@ test.describe('editing in the diagram', () => {
 
   test('adds a relation from the details without dragging', async ({ page }) => {
     await table(page, 'reviews').click()
+    await details(page, 'reviews')
+      .getByRole('button', { name: /^rating/ })
+      .click()
     await details(page, 'reviews').getByRole('button', { name: 'Add relation from rating' }).click()
     await page.getByPlaceholder('Type to filter').fill('countries.code')
     await page.keyboard.press('Enter')

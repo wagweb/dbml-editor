@@ -63,6 +63,7 @@ test.describe('desktop', () => {
     await expect(table(page, 'customers')).toHaveAttribute('data-dimmed', 'false')
 
     // Walking a relation from the panel moves the selection.
+    await details.getByRole('tab', { name: /Relations/ }).click()
     await details.getByRole('button', { name: /customers/ }).click()
     await expect(
       page.getByRole('complementary', { name: 'Details of table customers' }),

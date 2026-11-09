@@ -17,7 +17,22 @@ function shareFragment(name: string, source: string): string {
  * The app ships no examples, so tests open their schema the way a visitor would: through a
  * share link, which creates the diagram in a fresh browser.
  */
-export async function openSchema(page: Page, id: SchemaId): Promise<void> {
+/**
+ * The one-time gesture tips would pop up over the diagram in the middle of a test. Tests
+ * start as someone who has seen them; the tips have their own test.
+ */
+export async function skipTips(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('keyline:tips', JSON.stringify(['path', 'rename', 'link']))
+  })
+}
+
+export async function openSchema(
+  page: Page,
+  id: SchemaId,
+  options: { tips?: boolean } = {},
+): Promise<void> {
+  if (!options.tips) await skipTips(page)
   const sample = SAMPLES.find((entry) => entry.id === id)!
   await page.goto(`/#${shareFragment(sample.name, sample.source)}`)
 }

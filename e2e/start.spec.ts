@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
-import { schemaSource } from './fixtures.ts'
+import { schemaSource, skipTips } from './fixtures.ts'
 
 const table = (page: Page, name: string) => page.locator(`article[data-table-id="${name}"]`)
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
@@ -31,6 +31,7 @@ async function drop(page: Page, name: string, text: string, check?: () => Promis
 }
 
 test.beforeEach(async ({ page }) => {
+  await skipTips(page)
   await page.goto('/')
   await expect(start(page)).toBeVisible()
 })
@@ -61,6 +62,13 @@ test.describe('start screen', () => {
     await paste(page, schemaSource('storefront'))
     await expect(table(page, 'orders')).toBeVisible()
     await expect(page.getByRole('button', { name: 'storefront' })).toBeVisible()
+  })
+
+  test('keeps the indentation pasted code comes with', async ({ page }) => {
+    await paste(page, 'Table users {\n    id int [pk]\n    name text\n}\n')
+    await expect(table(page, 'users')).toBeVisible()
+    await page.getByRole('button', { name: 'View options' }).click()
+    await expect(page.getByRole('menuitem', { name: /Indentation/ })).toContainText('4 spaces')
   })
 
   test('sends pasted SQL through the import with the database guessed', async ({ page }) => {
