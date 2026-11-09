@@ -8,14 +8,29 @@ import { getOwn } from '@/lib/record'
 import { createDebouncedStorage } from '@/lib/storage'
 import { useUi } from './ui'
 
-export interface DiagramLayout {
+/** Arrangement of one view of the diagram. */
+export interface ViewLayout {
   positions: Record<string, Point>
   routes: Record<string, StoredRoute>
   /** Fingerprint of the structure the stored layout belongs to. */
   signature: string | null
   /** False once tables were arranged by hand; new tables are then placed incrementally. */
   auto: boolean
+}
+
+/** The whole diagram's arrangement plus one per DiagramView, keyed by the view's name. */
+export interface DiagramLayout extends ViewLayout {
   detail: DetailLevel
+  /** Name of the DiagramView that was open, null for the whole diagram. */
+  view?: string | null
+  views?: Record<string, ViewLayout>
+}
+
+/** A file on disk the document was opened from or saved to. */
+export interface FileLink {
+  name: string
+  /** Fingerprint of the text as it was last read from or written to the file. */
+  savedHash: string
 }
 
 export interface DiagramDocument {
@@ -25,6 +40,7 @@ export interface DiagramDocument {
   createdAt: number
   updatedAt: number
   layout: DiagramLayout
+  file?: FileLink
 }
 
 interface DocumentsState {
@@ -41,16 +57,20 @@ interface DocumentsState {
   /** Puts a removed document back, e.g. when a deletion is undone. */
   restore: (doc: DiagramDocument) => void
   setSource: (source: string) => void
+  /** Replaces the text of any document, e.g. when its file changed on disk. */
+  replaceSource: (id: string, source: string) => void
   saveLayout: (layout: Partial<DiagramLayout>) => void
+  setFile: (id: string, file: FileLink | null) => void
 }
 
-export const EMPTY_LAYOUT: DiagramLayout = {
+export const EMPTY_VIEW_LAYOUT: ViewLayout = {
   positions: {},
   routes: {},
   signature: null,
   auto: true,
-  detail: 'full',
 }
+
+export const EMPTY_LAYOUT: DiagramLayout = { ...EMPTY_VIEW_LAYOUT, detail: 'full' }
 
 function newId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -162,7 +182,22 @@ export const useDocuments = create<DocumentsState>()(
         setSource: (source) =>
           patchActive((doc) => (doc.source === source ? {} : { source, updatedAt: Date.now() })),
 
+        replaceSource: (id, source) => {
+          const { documents } = get()
+          const doc = documents[id]
+          if (!doc || doc.source === source) return
+          set({ documents: { ...documents, [id]: { ...doc, source, updatedAt: Date.now() } } })
+        },
+
         saveLayout: (layout) => patchActive((doc) => ({ layout: { ...doc.layout, ...layout } })),
+
+        setFile: (id, file) => {
+          const { documents } = get()
+          const doc = documents[id]
+          if (!doc) return
+          const { file: _previous, ...rest } = doc
+          set({ documents: { ...documents, [id]: file ? { ...rest, file } : rest } })
+        },
       }
     },
     {

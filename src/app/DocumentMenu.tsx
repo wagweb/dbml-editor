@@ -1,6 +1,18 @@
-import { ChevronsUpDown, FileText, Copy, FileInput, Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  ChevronsUpDown,
+  Copy,
+  FileInput,
+  FileText,
+  FolderOpen,
+  Pencil,
+  Plus,
+  Save,
+  Trash2,
+  Unlink,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { SAMPLES } from '@/dbml/samples'
+import { supportsFileHandles } from '@/lib/files'
 import { timeAgo } from '@/lib/time'
 import { sortedDocuments, useDocuments } from '@/store/documents'
 import { useUi } from '@/store/ui'
@@ -15,6 +27,7 @@ import {
   MenuTrigger,
 } from '@/ui/Menu'
 import { newDiagram, openSample } from './actions'
+import { hasUnsavedChanges, openFile, saveFile, unlinkFile } from './fileActions'
 
 function deleteWithUndo(id: string): void {
   const { documents, remove, restore } = useDocuments.getState()
@@ -31,6 +44,11 @@ function deleteWithUndo(id: string): void {
 export function DocumentMenu() {
   const activeId = useDocuments((s) => s.activeId)
   const activeName = useDocuments((s) => s.documents[s.activeId]?.name)
+  const file = useDocuments((s) => s.documents[s.activeId]?.file)
+  const unsaved = useDocuments((s) => {
+    const doc = s.documents[s.activeId]
+    return doc ? hasUnsavedChanges(doc) : false
+  })
   const [renaming, setRenaming] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
   const refocus = useRef(false)
@@ -68,6 +86,13 @@ export function DocumentMenu() {
         onDoubleClick={() => setRenaming(true)}
       >
         <span className="truncate">{activeName}</span>
+        {/* A dot after the name: the file on disk is behind the text in the editor. */}
+        {unsaved && (
+          <span className="shrink-0 text-ink-2">
+            <span aria-hidden>•</span>
+            <span className="sr-only">, unsaved changes</span>
+          </span>
+        )}
         <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-ink-3" />
       </MenuTrigger>
       <MenuContent align="start" className="w-72">
@@ -77,9 +102,31 @@ export function DocumentMenu() {
         <MenuItem icon={<Plus />} onSelect={newDiagram}>
           New diagram
         </MenuItem>
+        <MenuItem icon={<FolderOpen />} shortcut="mod+O" onSelect={() => void openFile()}>
+          Open DBML file
+        </MenuItem>
         <MenuItem icon={<FileInput />} onSelect={() => useUi.getState().openDialog('import-sql')}>
           Import from SQL
         </MenuItem>
+        <MenuSeparator />
+        {file && (
+          <MenuLabel className="truncate">
+            {unsaved ? 'Unsaved changes in' : 'Saved in'} {file.name}
+          </MenuLabel>
+        )}
+        <MenuItem icon={<Save />} shortcut="mod+S" onSelect={() => void saveFile()}>
+          {file ? 'Save' : supportsFileHandles() ? 'Save to file' : 'Download as file'}
+        </MenuItem>
+        {file && supportsFileHandles() && (
+          <MenuItem shortcut="shift+mod+S" onSelect={() => void saveFile({ as: true })}>
+            Save as
+          </MenuItem>
+        )}
+        {file && (
+          <MenuItem icon={<Unlink />} onSelect={unlinkFile}>
+            Detach from file
+          </MenuItem>
+        )}
         <MenuSeparator />
         <MenuItem icon={<Pencil />} onSelect={() => setRenaming(true)}>
           Rename
