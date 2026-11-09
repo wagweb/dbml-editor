@@ -11,10 +11,11 @@ export const MenuSub = DropdownMenu.Sub
 
 /**
  * The row under the pointer or the arrow keys gets a quiet fill. Keyboard users
- * additionally get the app's accent ring, drawn all the way round the row.
+ * additionally get the app's accent ring, drawn all the way round the row. Its corners are
+ * concentric with the menu's: 12 px outside, 4 px padding, so 8 px for the row.
  */
 const ITEM =
-  'flex min-h-8 cursor-default items-center gap-2.5 rounded-control px-2 text-[13px] outline-hidden select-none data-disabled:opacity-40 data-highlighted:bg-fill-strong keyboard:data-highlighted:shadow-[inset_0_0_0_1.5px_var(--accent)] [&_svg]:size-4 [&_svg]:shrink-0'
+  'flex min-h-8 cursor-default items-center gap-2.5 rounded-[8px] px-2 text-[13px] outline-hidden select-none data-disabled:opacity-40 data-highlighted:bg-fill-strong keyboard:data-highlighted:shadow-[inset_0_0_0_1.5px_var(--accent)] [&_svg]:size-4 [&_svg]:shrink-0'
 
 /**
  * The outline of a floating surface is a ring drawn outside its box (`--shadow-pop`). The

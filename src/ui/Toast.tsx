@@ -34,7 +34,7 @@ export function Toaster() {
         <div
           key={toast.id}
           className={cn(
-            'pointer-events-auto flex min-h-10 max-w-md animate-pop-in items-center gap-3 rounded-lg bg-ink py-1.5 pr-1.5 pl-3.5 text-[13px] font-medium text-canvas shadow-lg',
+            'pointer-events-auto flex min-h-10 max-w-md animate-pop-in items-center gap-3 rounded-panel bg-ink py-1.5 pr-1.5 pl-3.5 text-[13px] font-medium text-canvas shadow-lg',
             toast.tone === 'error' && 'bg-danger text-white',
           )}
           onPointerEnter={() => setHeld(true)}
