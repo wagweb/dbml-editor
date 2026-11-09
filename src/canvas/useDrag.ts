@@ -19,7 +19,7 @@ interface DragSession {
 interface DragOptions {
   /** Tables that move together; read when the press starts. */
   ids: () => string[]
-  onClick?: () => void
+  onClick?: (modifiers: { shiftKey: boolean }) => void
   onDragChange?: (dragging: boolean) => void
 }
 
@@ -44,7 +44,6 @@ export function useDrag({ ids, onClick, onDragChange }: DragOptions) {
       origins,
       dragging: false,
     }
-    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
@@ -55,6 +54,9 @@ export function useDrag({ ids, onClick, onDragChange }: DragOptions) {
     if (!current.dragging) {
       if (Math.abs(dx) + Math.abs(dy) <= CLICK_SLOP) return
       current.dragging = true
+      // Capturing only once a drag is under way keeps clicks and double-clicks on the
+      // element under the pointer; a captured pointer would retarget them to this one.
+      event.currentTarget.setPointerCapture(event.pointerId)
       onDragChange?.(true)
     }
     const { k } = useViewport.getState()
@@ -79,7 +81,7 @@ export function useDrag({ ids, onClick, onDragChange }: DragOptions) {
       onDragChange?.(false)
       endDrag()
     } else if (!cancelled) {
-      onClick?.()
+      onClick?.({ shiftKey: event.shiftKey })
     }
   }
 

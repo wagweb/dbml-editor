@@ -1,5 +1,7 @@
+import { undo } from '@codemirror/commands'
 import { StateEffect, StateField } from '@codemirror/state'
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
+import type { TextEdit } from '@/dbml/edit'
 import type { SourceRange } from '@/dbml/model'
 
 const FLASH_MS = 900
@@ -68,6 +70,26 @@ export function replaceEditorText(text: string): boolean {
     scrollIntoView: true,
   })
   return true
+}
+
+/** The text as the editor has it right now, or null before the editor is mounted. */
+export function editorText(): string | null {
+  return view ? view.state.doc.toString() : null
+}
+
+/** Applies edits made from the diagram as one undoable step. */
+export function applyEditorEdits(edits: readonly TextEdit[]): boolean {
+  if (!view || edits.length === 0) return false
+  view.dispatch({
+    changes: edits.map((edit) => ({ from: edit.from, to: edit.to, insert: edit.insert })),
+    userEvent: 'input.diagram',
+  })
+  return true
+}
+
+/** Takes back the last edit, whether it was typed or made from the diagram. */
+export function undoEditor(): void {
+  if (view) undo(view)
 }
 
 export function focusEditor(): void {
