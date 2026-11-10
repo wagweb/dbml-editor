@@ -21,6 +21,8 @@ export function routeSignature(start: Point, end: Point): string {
   return `${start.x},${start.y}>${end.x},${end.y}`
 }
 
+const NO_CORNERS: ReadonlySet<number> = new Set()
+
 /** Horizontal run that keeps cardinality markers clear of the first bend. */
 export const STUB = 24
 const SELF_LOOP_REACH = 28
@@ -99,8 +101,15 @@ export function simplify(points: Point[]): Point[] {
   return result
 }
 
-/** SVG path through the points with rounded corners. */
-export function roundedPath(points: Point[], radius = 8): string {
+/**
+ * SVG path through the points with rounded corners. Corners listed in `sharp` (indices into
+ * `points`) stay square: that is where a line branches off a bundle.
+ */
+export function roundedPath(
+  points: Point[],
+  radius = 8,
+  sharp: ReadonlySet<number> = NO_CORNERS,
+): string {
   const first = points[0]
   if (!first || points.length < 2) return ''
 
@@ -119,7 +128,7 @@ export function roundedPath(points: Point[], radius = 8): string {
     const next = points[i + 1]!
     const before = distance(previous, corner)
     const after = distance(corner, next)
-    const r = Math.min(radius, before / 2, after / 2)
+    const r = sharp.has(i) ? 0 : Math.min(radius, before / 2, after / 2)
     if (r <= 0) {
       lineTo(corner)
       continue

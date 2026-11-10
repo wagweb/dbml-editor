@@ -13,6 +13,11 @@ const MARGIN = 14
 const REACH = 360
 /** A bend costs as much as this many pixels of detour. */
 const BEND_COST = 36
+/**
+ * Running along a line that leaves the same row costs this share of the distance, so a
+ * new route joins an existing one and the two form a bundle instead of parallel lanes.
+ */
+const SHARED_COST = 0.4
 const SIDES: Side[] = ['E', 'W']
 
 /**
@@ -21,11 +26,18 @@ const SIDES: Side[] = ['E', 'W']
  * longer apply. Runs A* on a sparse grid spanned by the edges of the nearby tables and
  * picks the cheapest of the four ways to leave and enter (left or right on either end).
  */
-export function routeAvoiding(a: Anchor, b: Anchor, others: readonly Rect[]): AvoidingRoute {
+export function routeAvoiding(
+  a: Anchor,
+  b: Anchor,
+  others: readonly Rect[],
+  /** Routes of relations that attach to the same row as one of the ends, to bundle with. */
+  bundleWith: readonly (readonly Point[])[] = [],
+): AvoidingRoute {
+  const shared = sharedSegments(bundleWith)
   let best: (AvoidingRoute & { cost: number }) | null = null
   for (const startSide of SIDES) {
     for (const endSide of SIDES) {
-      const candidate = search(a, b, startSide, endSide, others)
+      const candidate = search(a, b, startSide, endSide, others, shared)
       if (candidate && (!best || candidate.cost < best.cost)) best = candidate
     }
   }
@@ -67,12 +79,33 @@ function edgeX(anchor: Anchor, side: Side): number {
   return side === 'E' ? anchor.rect.x + anchor.rect.width : anchor.rect.x
 }
 
+interface Segments {
+  /** Horizontal stretches: y, then the smaller and the larger x. */
+  across: [number, number, number][]
+  /** Vertical stretches: x, then the smaller and the larger y. */
+  down: [number, number, number][]
+}
+
+function sharedSegments(routes: readonly (readonly Point[])[]): Segments {
+  const segments: Segments = { across: [], down: [] }
+  for (const points of routes) {
+    for (let i = 1; i < points.length; i += 1) {
+      const p = points[i - 1]!
+      const q = points[i]!
+      if (p.y === q.y) segments.across.push([p.y, Math.min(p.x, q.x), Math.max(p.x, q.x)])
+      else if (p.x === q.x) segments.down.push([p.x, Math.min(p.y, q.y), Math.max(p.y, q.y)])
+    }
+  }
+  return segments
+}
+
 function search(
   a: Anchor,
   b: Anchor,
   startSide: Side,
   endSide: Side,
   others: readonly Rect[],
+  shared: Segments,
 ): (AvoidingRoute & { cost: number }) | null {
   const start = { x: edgeX(a, startSide), y: a.y }
   const end = { x: edgeX(b, endSide), y: b.y }
@@ -106,8 +139,26 @@ function search(
     walls.some((w) => p.x > w.left && p.x < w.right && p.y > w.top && p.y < w.bottom)
   if (inside(from) || inside(to)) return null
 
-  const xs = uniqueSorted([from.x, to.x, ...walls.flatMap((w) => [w.left, w.right])])
-  const ys = uniqueSorted([from.y, to.y, ...walls.flatMap((w) => [w.top, w.bottom])])
+  // The lines of a bundle are grid lines too, so the search can step right onto them.
+  const xs = uniqueSorted([
+    from.x,
+    to.x,
+    ...walls.flatMap((w) => [w.left, w.right]),
+    ...shared.down.map(([x]) => x).filter((x) => x > window.left && x < window.right),
+  ])
+  const ys = uniqueSorted([
+    from.y,
+    to.y,
+    ...walls.flatMap((w) => [w.top, w.bottom]),
+    ...shared.across.map(([y]) => y).filter((y) => y > window.top && y < window.bottom),
+  ])
+  const onAcross = (y: number, x1: number, x2: number) =>
+    shared.across.some(([sy, left, right]) => sy === y && left <= x1 && right >= x2)
+  const onDown = (x: number, y1: number, y2: number) =>
+    shared.down.some(([sx, top, bottom]) => sx === x && top <= y1 && bottom >= y2)
+  // With shared stretches a step can cost less than its length; the estimate must not
+  // promise more than that, or the search would miss the bundle.
+  const discount = shared.across.length + shared.down.length > 0 ? SHARED_COST : 1
 
   // A horizontal step on row y from x1 to x2 is blocked by walls that span that row.
   const blockedRow = (y: number, x1: number, x2: number) =>
@@ -125,7 +176,8 @@ function search(
   const parent = new Int32Array(columns * rows * 2).fill(-1)
   const open: { state: number; score: number }[] = []
   const estimate = (index: number) =>
-    Math.abs(xs[index % columns]! - to.x) + Math.abs(ys[Math.floor(index / columns)]! - to.y)
+    discount *
+    (Math.abs(xs[index % columns]! - to.x) + Math.abs(ys[Math.floor(index / columns)]! - to.y))
 
   // Leaving sideways is free; the stub already points that way.
   best[startIndex * 2] = 0
@@ -164,15 +216,17 @@ function search(
     const x = xs[column]!
     const y = ys[row]!
     const steps: [number, number, number][] = []
+    const across = (x1: number, x2: number) => (x2 - x1) * (onAcross(y, x1, x2) ? SHARED_COST : 1)
+    const down = (y1: number, y2: number) => (y2 - y1) * (onDown(x, y1, y2) ? SHARED_COST : 1)
     if (column > 0 && !blockedRow(y, xs[column - 1]!, x))
-      steps.push([index - 1, 0, x - xs[column - 1]!])
+      steps.push([index - 1, 0, across(xs[column - 1]!, x)])
     if (column < columns - 1 && !blockedRow(y, x, xs[column + 1]!)) {
-      steps.push([index + 1, 0, xs[column + 1]! - x])
+      steps.push([index + 1, 0, across(x, xs[column + 1]!)])
     }
     if (row > 0 && !blockedColumn(x, ys[row - 1]!, y))
-      steps.push([index - columns, 1, y - ys[row - 1]!])
+      steps.push([index - columns, 1, down(ys[row - 1]!, y)])
     if (row < rows - 1 && !blockedColumn(x, y, ys[row + 1]!)) {
-      steps.push([index + columns, 1, ys[row + 1]! - y])
+      steps.push([index + columns, 1, down(y, ys[row + 1]!)])
     }
 
     for (const [next, nextDirection, length] of steps) {

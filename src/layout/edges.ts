@@ -1,4 +1,4 @@
-import type { Cardinality, RefModel, SchemaModel } from '@/dbml/model'
+import type { Cardinality, RefKind, RefModel, SchemaModel } from '@/dbml/model'
 import { getOwn } from '@/lib/record'
 import { crossesAny, routeAvoiding } from './avoid'
 import type { Side, StoredRoute } from './elk'
@@ -8,6 +8,8 @@ import { roundedPath, routeSelf, type Anchor, type Point, type Rect } from './ro
 
 export interface EdgeEnd {
   tableId: string
+  /** The column whose row the line attaches to (the first one of a composite key). */
+  column: string | undefined
   point: Point
   /** +1 when the line leaves the table to the right, -1 to the left. */
   direction: 1 | -1
@@ -16,6 +18,7 @@ export interface EdgeEnd {
 
 export interface EdgeGeometry {
   refId: string
+  kind: RefKind
   points: Point[]
   path: string
   /** Cardinality markers of both ends as one path. */
@@ -59,6 +62,7 @@ export function refreshRoutes(
 ): Record<string, StoredRoute> {
   const rects = placedRects(model, boxes, positions)
   const next: Record<string, StoredRoute> = {}
+  const rerouted: { ref: RefModel; child: Anchor; parent: Anchor; others: Rect[] }[] = []
   for (const ref of model.refs) {
     if (ref.child.tableId === ref.parent.tableId) continue
     const child = anchorOf(ref.child.tableId, ref.child.columns[0], boxes, positions)
@@ -70,7 +74,20 @@ export function refreshRoutes(
       next[ref.id] = stored
       continue
     }
-    const route = routeAvoiding(parent, child, others)
+    rerouted.push({ ref, child, parent, others })
+  }
+
+  // New routes come after the kept ones, so they can join the lines that leave the same
+  // row and run with them as a bundle.
+  const rowOf = (end: RefModel['child']) => `${end.tableId}\u0000${end.columns[0] ?? ''}`
+  for (const { ref, child, parent, others } of rerouted) {
+    const rows = new Set([rowOf(ref.child), rowOf(ref.parent)])
+    const partners = model.refs.flatMap((other) => {
+      const route = other.id !== ref.id && getOwn(next, other.id)
+      if (!route || other.kind === 'enum' || ref.kind === 'enum') return []
+      return rows.has(rowOf(other.child)) || rows.has(rowOf(other.parent)) ? [route.points] : []
+    })
+    const route = routeAvoiding(parent, child, others, partners)
     next[ref.id] = {
       points: route.points,
       startTableId: ref.parent.tableId,
@@ -144,12 +161,14 @@ function computeEdge(
   const endEndpoint = startsAtChild ? ref.parent : ref.child
   const start: EdgeEnd = {
     tableId: startEndpoint.tableId,
+    column: startEndpoint.columns[0],
     point: first,
     direction: directionOf(first, points[1]!),
     cardinality: startEndpoint.cardinality,
   }
   const end: EdgeEnd = {
     tableId: endEndpoint.tableId,
+    column: endEndpoint.columns[0],
     point: last,
     direction: directionOf(last, points.at(-2)!),
     cardinality: endEndpoint.cardinality,
@@ -157,6 +176,7 @@ function computeEdge(
 
   return {
     refId: ref.id,
+    kind: ref.kind,
     points,
     path: roundedPath(points),
     // The link from a column to its enum type is not a foreign key; it carries no cardinality.
