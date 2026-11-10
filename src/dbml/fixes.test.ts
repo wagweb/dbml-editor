@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { addPrimaryKeyColumn, applyEdits, markPrimaryKey, setColumnType } from './edit'
-import { describeFix, fixEdits } from './fixes'
-import { inStyle, schemaHints, type Hint } from './hints'
+import { describeFix, fixEdits, guessColumnType } from './fixes'
+import { DEFAULT_HINT_RULES, inStyle, schemaHints, type Hint, type HintRules } from './hints'
 import { parseDbml } from './parse'
 
 function schema(source: string) {
@@ -11,13 +11,22 @@ function schema(source: string) {
 }
 
 /** Applies the fix for the first hint of a kind and returns the new text. */
-function fixed(source: string, kind: Hint['kind']): string | null {
+function fixed(
+  source: string,
+  kind: Hint['kind'],
+  rules: HintRules = DEFAULT_HINT_RULES,
+): string | null {
   const { model } = schema(source)
-  const hint = schemaHints(model).find((h) => h.kind === kind)
+  const hint = schemaHints(model, rules).find((h) => h.kind === kind)
   if (!hint) throw new Error(`no ${kind} hint`)
   const edits = fixEdits(hint, source, model)
   return edits ? applyEdits(source, edits) : null
 }
+
+const requiring = (...requiredColumns: string[]): HintRules => ({
+  ...DEFAULT_HINT_RULES,
+  requiredColumns,
+})
 
 describe('column edits', () => {
   it('changes a type, keeping settings and comments', () => {
@@ -98,6 +107,74 @@ describe('hint fixes', () => {
       done: 'Added an id column as primary key',
     })
     expect(describeFix({ ...hint!, kind: 'naming', suggestion: undefined }, model)).toBeNull()
+  })
+})
+
+describe('missing column fix', () => {
+  it('adds the column with a type that fits its name', () => {
+    const source = 'Table a {\n  id uuid [pk]\n  name text\n  indexes {\n    name\n  }\n}\n'
+    expect(fixed(source, 'missing-column', requiring('created_at'))).toBe(
+      'Table a {\n  id uuid [pk]\n  name text\n  created_at timestamp\n  indexes {\n    name\n  }\n}\n',
+    )
+    expect(fixed(source, 'missing-column', requiring('owner_id'))).toContain(
+      '  name text\n  owner_id uuid\n',
+    )
+  })
+
+  it('leaves no hint behind', () => {
+    const rules = requiring('created_at', 'is_active')
+    let source = 'Table a {\n  id int [pk]\n}\nTable b {\n  id int [pk]\n}\n'
+    for (let round = 0; round < 4; round += 1) source = fixed(source, 'missing-column', rules)!
+    expect(schemaHints(schema(source).model, rules)).toEqual([])
+    expect(source).toContain('  is_active boolean\n')
+  })
+
+  it('is described with the column name', () => {
+    const { model } = schema('Table a {\n  id int [pk]\n}\n')
+    const [hint] = schemaHints(model, requiring('created_at'))
+    expect(describeFix(hint!, model)).toEqual({ label: 'Add created_at', done: 'Added created_at' })
+    expect(describeFix({ ...hint!, suggestion: undefined }, model)).toBeNull()
+    expect(
+      fixEdits({ ...hint!, suggestion: undefined }, 'Table a {\n  id int [pk]\n}\n', model),
+    ).toBeNull()
+    expect(describeFix({ ...hint!, tableId: 'missing' }, model)).toBeNull()
+  })
+
+  it('is not offered for a table whose columns all come from partials', () => {
+    const source = 'TablePartial base {\n  id int [pk]\n}\nTable a {\n  ~base\n}\n'
+    const { model } = schema(source)
+    const [hint] = schemaHints(model, requiring('created_at'))
+    expect(hint!.kind).toBe('missing-column')
+    expect(describeFix(hint!, model)).toBeNull()
+    expect(fixEdits(hint!, source, model)).toBeNull()
+  })
+})
+
+describe('guessColumnType', () => {
+  const table = (source: string) => schema(source).model.tables[0]!
+
+  it('reads timestamps and flags from the name', () => {
+    const plain = table('Table a {\n  name text\n}\n')
+    expect(guessColumnType('created_at', plain)).toBe('timestamp')
+    expect(guessColumnType('updatedAt', plain)).toBe('timestamp')
+    expect(guessColumnType('is_active', plain)).toBe('boolean')
+    expect(guessColumnType('hasChildren', plain)).toBe('boolean')
+    expect(guessColumnType('has_owner', plain)).toBe('boolean')
+    // A word that merely starts with "is" or "has" is not a flag.
+    expect(guessColumnType('island', plain)).toBe('varchar')
+    expect(guessColumnType('hash', plain)).toBe('varchar')
+    expect(guessColumnType('name', plain)).toBe('varchar')
+  })
+
+  it('gives keys the type of the table key, or int', () => {
+    const uuidKey = table('Table a {\n  id uuid [pk]\n}\n')
+    expect(guessColumnType('owner_id', uuidKey)).toBe('uuid')
+    expect(guessColumnType('ownerId', uuidKey)).toBe('uuid')
+    const composite = table(
+      'Table a {\n  x bigint\n  y bigint\n  indexes {\n    (x, y) [pk]\n  }\n}\n',
+    )
+    expect(guessColumnType('owner_id', composite)).toBe('int')
+    expect(guessColumnType('owner_id', table('Table a {\n  name text\n}\n'))).toBe('int')
   })
 })
 

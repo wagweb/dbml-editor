@@ -1,4 +1,5 @@
 import {
+  addColumn,
   addIndex,
   addPrimaryKeyColumn,
   markPrimaryKey,
@@ -8,7 +9,7 @@ import {
   type TextEdit,
 } from './edit'
 import type { Hint } from './hints'
-import { isTable, type SchemaModel } from './model'
+import { isTable, type SchemaModel, type TableModel } from './model'
 
 export interface FixDescription {
   /** Button text, short enough for a tooltip or a list row. */
@@ -29,6 +30,11 @@ export function describeFix(hint: Hint, model: SchemaModel): FixDescription | nu
       return idColumn(hint, model)
         ? { label: 'Use id as key', done: 'id is now the primary key' }
         : { label: 'Add id column', done: 'Added an id column as primary key' }
+    case 'missing-column':
+      // A table whose columns all come from partials has no line to add the column after.
+      return hint.suggestion && hasOwnColumn(hint, model)
+        ? { label: `Add ${hint.suggestion}`, done: `Added ${hint.suggestion}` }
+        : null
     case 'type-mismatch':
       return hint.suggestion && hint.column
         ? { label: `Use ${hint.suggestion}`, done: `Changed the type to ${hint.suggestion}` }
@@ -53,6 +59,18 @@ export function fixEdits(hint: Hint, source: string, model: SchemaModel): TextEd
         ? markPrimaryKey(source, model, hint.tableId, id)
         : addPrimaryKeyColumn(source, model, hint.tableId, 'id', primaryKeyType(model))
     }
+    case 'missing-column': {
+      const table = model.tables.find((t) => t.id === hint.tableId)
+      return table && hint.suggestion
+        ? addColumn(
+            source,
+            model,
+            table.id,
+            hint.suggestion,
+            guessColumnType(hint.suggestion, table),
+          )
+        : null
+    }
     case 'type-mismatch':
       return hint.column && hint.suggestion
         ? setColumnType(source, model, hint.tableId, hint.column, hint.suggestion)
@@ -71,6 +89,28 @@ function foreignKeyColumns(hint: Hint, model: SchemaModel): string[] | null {
     (r) => r.child.tableId === hint.tableId && r.child.columns[0] === hint.column,
   )
   return ref ? ref.child.columns : null
+}
+
+function hasOwnColumn(hint: Hint, model: SchemaModel): boolean {
+  const table = model.tables.find((t) => t.id === hint.tableId)
+  return (
+    table?.columns.some((c) => c.range.from >= table.range.from && c.range.to <= table.range.to) ??
+    false
+  )
+}
+
+/**
+ * A type for a new column, read from common naming patterns. A foreign key gets the type of
+ * the table's own key, since a schema tends to use one key type throughout.
+ */
+export function guessColumnType(name: string, table: TableModel): string {
+  if (/(_at|At)$/.test(name)) return 'timestamp'
+  if (/^(is|has)(_|[A-Z])/.test(name)) return 'boolean'
+  if (/(_id|Id)$/.test(name)) {
+    const keys = table.columns.filter((c) => c.pk)
+    return keys.length === 1 ? keys[0]!.type : 'int'
+  }
+  return 'varchar'
 }
 
 function idColumn(hint: Hint, model: SchemaModel): string | null {
