@@ -60,7 +60,28 @@
 - View-only links that open without code and are not stored until "Open in editor".
 - One-time tips for shift-click, double-click to rename and dragging a relation.
 
+- Several tables at once: Shift + drag selects within a rectangle, Cmd or Ctrl + click
+  adds a table, Cmd or Ctrl + A selects all; align, space out, move together, or write
+  the selection into the code as a TableGroup or a DiagramView.
+- Back and forward through the tables chosen (Alt + Left and Right, and a back button in
+  the details).
+- A tooltip on a column the pointer rests on: type, constraints, default, reference, note.
+- The status bar shows how much of the schema has notes and jumps to the next place
+  without one.
+- Hint rules: switch hint kinds off, choose the naming style, require columns such as
+  `created_at` in every table, with a fix that adds them.
+- Layout options in the view menu: left to right or top to bottom, compact, normal or
+  airy spacing. Enum cards now sit next to the first table that uses them.
+- Image export dialog: PNG at 1x to 4x, colours like the app, light or dark, solid or
+  transparent background.
+
 ### Changed
+
+- Motion throughout: menus, dialogs, popovers, tooltips, the details panel, bars, tips and
+  messages animate out as well as in; relations draw themselves in when a diagram opens
+  and after tidying up; column details open smoothly; buttons give when pressed; the
+  theme cross-fades; copy buttons show a check.
+- Dialogs open with focus on the dialog, not on its close button.
 
 - The details panel has tabs (Columns, Relations, Indexes, Data). Columns are one line
   each and open for their details and actions; relations show how far the highlight
@@ -103,6 +124,9 @@
   SQL dialogs on a phone the four databases sit in two rows.
 
 ### Fixed
+
+- Image exports cut off lines that ran outside the outermost tables, and PNGs could come
+  out blurred in some browsers.
 
 - Code that scrolled sideways showed through the line numbers, and the trackpad's rubber
   band moved them.

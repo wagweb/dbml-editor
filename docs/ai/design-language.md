@@ -103,6 +103,44 @@ Rules:
 - The footer holds what is not about the content: Path to another table, and Move with
   four arrows (the pointer-free alternative to dragging).
 
+## Selection of several tables
+
+- Every selected card wears the selection ring; there is no focus dimming and no details
+  panel. The bar sits at the top centre in the toolbar's style: the count, Arrange,
+  Make group, Make view, and a clear button with Esc.
+- The selection rectangle is a hairline in the accent over a 7% tint (`.marquee`).
+- Naming a group or view happens inline in the bar, in the inline edit field.
+
+## Tooltips on the canvas
+
+- A line under the pointer and a column the pointer rests on explain themselves in an ink
+  tooltip. The column tooltip sits beside the card, level with the row, and says type,
+  constraints, default, what it references and its note.
+
+## Motion
+
+- Motion explains a change: where something comes from, where it goes, what just
+  happened. It never decorates and never delays work.
+- Tokens in `src/index.css`: `--ease-out` for arriving, `--ease-in` for leaving,
+  `--ease-spring` (a small overshoot) for things that arrive on their own. Arriving takes
+  160 to 240 ms, leaving 110 to 150 ms.
+- Every overlay leaves the way it came: menus, popovers, dialogs and tooltips through
+  Radix (`data-[state=closed]:animate-…`), the details panel, the selection bar, tips and
+  toasts through `usePresence` (`src/lib/usePresence.ts`), which keeps them for their exit.
+- Bars arrive from the edge they live on: the selection bar drops in from the top, the
+  presentation bar, tips and toasts rise from the bottom, with the spring.
+- In the details panel a new table's name and content slide in by 4 px, tab content does
+  the same, and an opened column grows to its height (grid rows from 0fr to 1fr).
+- The canvas has one motion of its own: when a diagram opens and after "Tidy up", the
+  relations draw themselves in from left to right (`stroke-dashoffset`, repainted, no GPU
+  layers), as the start screen draws its one relation. A table that was just written
+  lands with an accent halo that shrinks into its outline (scale and shadow, no opacity).
+- Buttons give a little when pressed (`active:scale`), the focus ring grows out from the
+  edge, a change of theme cross-fades the page (View Transitions), and a copy button turns
+  into a check for a moment.
+- Inside the canvas world nothing animates opacity (decision 48). Reduced motion turns
+  every animation off, including the drawing of relations and the theme fade.
+
 ## Code editor
 
 - Long lines wrap with a hanging indent: a wrapped line continues one level deeper than

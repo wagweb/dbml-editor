@@ -20,7 +20,8 @@ once with `pnpm exec playwright install chromium`.
 ## What it does
 
 - DBML editor with highlighting, completion and inline problems
-- Automatic layout that fills the screen, with a manual mode when you drag tables
+- Automatic layout that fills the screen, left to right or top to bottom, with a manual
+  mode when you drag tables
 - Focus on one table: its relations light up, the rest goes grey; shift-click a second
   table to see the path between them
 - Views from `DiagramView`, suggested groups for schemas without any, enums and sticky
@@ -32,12 +33,13 @@ once with `pnpm exec playwright install chromium`.
 - Start by pasting or dropping DBML or SQL anywhere
 - Schema hints with one-click fixes: missing primary keys, unindexed foreign keys, type
   mismatches, names that break the pattern
+- Select several tables to move, align, or turn into a group or a view
 - Copy a SQL query that joins the tables along a path
 - Code formatting (Shift + Alt + F) with spaces or tabs; the indentation of pasted and
   opened files is kept; block templates, folding and wrapped long lines in the editor
 - The code cursor marks its table, column and relations in the diagram
-- Export as PNG, SVG, SQL, DBML, Markdown with a Mermaid diagram, or copy Mermaid for
-  GitHub; import from SQL
+- Export as PNG (up to 4x) or SVG, SQL, DBML, Markdown with a Mermaid diagram, or copy
+  Mermaid for GitHub; import from SQL
 - View-only links for docs and tickets, and a presentation mode that walks through the
   groups
 - Light and dark theme, usable with the keyboard

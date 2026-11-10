@@ -268,3 +268,42 @@ with `(revised by #N)`.
     place. The header now takes the card header's group tint and puts the group name
     above the table name in the group's colour, the way the canvas labels a region. No
     chips; the alias is written as DBML writes it.
+65. **2026-11-10: Image exports take in every line, and ask how big.** Reported by Niklas:
+    content was cut off at the edges and the resolution was too low. The page size only
+    covered cards and group regions, so routes around tables and loops of self relations
+    could leave it; it now covers every line point plus the markers. PNG and SVG go
+    through a dialog: resolution 1x to 4x (3x by default), colours like the app, light or
+    dark, solid or transparent. The SVG is given the target pixel size before it is drawn,
+    because some browsers rasterise it at its own size first and blur it when scaling up.
+    Very large diagrams get the highest scale a browser canvas allows, and the dialog says
+    so.
+66. **2026-11-10: Several tables at once.** Shift + drag on empty canvas draws a selection
+    rectangle (Shift + click stays the path question), Cmd or Ctrl + click adds or takes
+    out a table, Cmd or Ctrl + A selects all. Two or more tables have no details and no
+    focus; a bar at the top arranges them (align left or top edges, space out) and writes
+    them into the code as a TableGroup (taking them out of other groups) or a DiagramView.
+    They drag and nudge together.
+67. **2026-11-10: Small helpers.** Alt + Left and Right walk back and forward through the
+    tables chosen, with a back button in the details. A column the pointer rests on for
+    450 ms explains itself in a tooltip beside the card. The status bar shows the share of
+    tables and columns with a note and opens the code at the next one without. Hint rules
+    can switch kinds off, fix the naming style, and require columns in every table.
+68. **2026-11-10: Layout options, with left to right staying the default.** The view menu
+    offers direction (left to right, top to bottom), spacing (compact, normal, airy:
+    factors 0.7, 1, 1.4) and enum cards next to their first user (on by default). A
+    change lays the diagram out afresh, like "Tidy up". Top to bottom is measured weaker
+    over the samples: about 1.4 times the crossings, twice the bends and 1.7 times the
+    line length, because relations attach to rows on the side edges and every line has to
+    turn twice across a vertical flow. Small schemas read well; for a first-class
+    top-down mode the referenced end should leave from the card's bottom edge instead.
+    Enum placement weighs link length, bends, crossings and the side the user table's
+    other relations take, and never covers a card, a group or a line.
+69. **2026-11-10: A motion system.** Asked for by Niklas: polish and good animations.
+    Overlays used to animate in and vanish in one frame; now everything leaves the way it
+    came, faster than it arrived, and the canvas has a single signature motion, the
+    relations drawing themselves in on open and after "Tidy up". The rules are in the
+    Motion section of `design-language.md`. The old entrance of new tables faded opacity
+    inside the canvas, against decision 48; it now settles by scale with an accent halo.
+    Two test timings came up on the way: CodeMirror accepts a completion only 75 ms after
+    its list changed, and Radix moves menu focus a task after the key, so tests that press
+    keys back to back now wait for each step.

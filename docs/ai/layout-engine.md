@@ -4,8 +4,8 @@ Everything under `src/layout/`. The engine has one job: make relations easy to f
 
 ## Principles
 
-1. Reading direction is always left to right. The referenced table (the "one" side) sits
-   left of the table that references it.
+1. Reading direction is left to right by default. The referenced table (the "one" side)
+   sits left of the table that references it (above it with `direction: 'down'`).
 2. A relation attaches to the row of its column, on the left or right edge of the card.
 3. Lines are orthogonal, get their own lane, and do not run behind tables.
 4. Tables of a `TableGroup` stay together inside one tinted region.
@@ -19,8 +19,8 @@ Everything under `src/layout/`. The engine has one job: make relations easy to f
    ordered first ("blocks"), and relations between two groups all point the same way.
    Without this, two groups that reference each other make lines loop around the diagram.
 2. **Graph**. Tables become ELK nodes with fixed-position ports, one per connected row and
-   side. Groups become compound nodes. ELK runs `layered`, direction `RIGHT`, orthogonal
-   routing, `INCLUDE_CHILDREN`.
+   side. Groups become compound nodes. ELK runs `layered`, direction `RIGHT` (or `DOWN`,
+   see layout options), orthogonal routing, `INCLUDE_CHILDREN`.
 3. **Wrapping** (`relax.ts`). A chain of groups would end up in one row. For the block
    pairs that are cheapest to bend, the relation is drawn as a bracket: both ends leave on
    the right side and meet in an invisible junction node. The two blocks no longer need to
@@ -50,7 +50,38 @@ untouched relations; moved tables and lines a table was dropped onto get new one
 Enum cards and sticky notes are ordinary nodes for the layout. The link from a column to
 its enum card is an edge like any other, drawn dashed and without cardinality markers;
 `refColumnsByTable` ignores it, so the keys view does not show enum columns and the link
-then attaches to the header.
+then attaches to the header. With `enumsNearUsers` (the default) enum cards are moved
+after the layout, see below.
+
+## Layout options
+
+`LayoutRequest.options` takes `LayoutPreferences`; without it `DEFAULT_LAYOUT_PREFERENCES`
+apply (`right`, `normal`, enums near users). The defaults give exactly the layout from
+before the options existed, apart from the enum cards.
+
+- **Spacing** (`compact`, `normal`, `airy`) scales every ELK distance in `SPACING` by
+  `SPACING_FACTORS` (0.7, 1, 1.4), rounded to half a grid cell (`scaleDistance`); `normal`
+  keeps the tuned values exactly. Group padding only scales the part beyond the drawn
+  region (`GROUP_INSET`), so tints never touch. The wrapping estimate uses the same gaps.
+- **Direction `down`**: ELK `DOWN` with network simplex node placement. Relations still
+  attach to the side edges of their rows, so ELK runs twice: the first pass places the
+  cards, then `sidesTopDown` (`sides.ts`) decides per card which edge takes its keys and
+  which its foreign keys (opposite edges, so lines going down never cross lines coming
+  from above beside the card), picking whichever saves the most doubling back. The second
+  pass routes with those edges. Wrapping works as left to right, on a turned estimate;
+  bracket junctions sit below both blocks. Measured on the samples (6 schemas, two detail
+  levels, two viewports) against left to right: about 1.4 times the crossings, twice the
+  bends, 1.7 times the line length; no line runs through a card. Every relation needs a
+  turn out of the side and one into the next side, which is the price of row anchors in
+  a vertical flow. `orient.ts` needs no change: "left" simply means "above".
+- **Enums near users** (`enums.ts`): after the layout, each enum card moves next to the
+  first table in model order that uses it. Candidates on the grid around that table are
+  ranked by link length, bends, a price per relation already attached on that edge (so
+  the card goes to the quieter side), crossings and cards in the way. Spots that touch a
+  card, a group region or another relation's line are skipped; if nothing is free within
+  1920 px the card goes below the diagram. The moved card's links get avoiding routes,
+  all other routes stay. Because the card snaps to the grid and the rows do not, a link
+  can show a jog of up to 4 px.
 
 ## Relayouts that keep the picture
 
@@ -85,11 +116,13 @@ back to simple placement, so the canvas never stays empty.
 
 ## Tuning
 
-Spacing lives in `SHARED_OPTIONS` in `elk.ts`. To judge a change, render the test schemas:
+Spacing lives in `SPACING` in `elk.ts`, the other engine options in `SHARED_OPTIONS`. To judge a change, render the test schemas:
 
 ```sh
 PREVIEW_DIR=/tmp/preview pnpm vitest run src/layout/preview.test.ts
 ```
 
 `PREVIEW_VARIANTS` takes a JSON object of ELK option overrides to compare side by side,
-`PREVIEW_W` and `PREVIEW_H` set the viewport the wrapping aims for.
+`PREVIEW_W` and `PREVIEW_H` set the viewport the wrapping aims for, and `PREVIEW_PREFS`
+takes layout preferences as JSON, e.g. `{"direction":"down","spacing":"airy"}`. The
+preview draws enum and note cards, as the app does.

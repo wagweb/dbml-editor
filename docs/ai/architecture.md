@@ -12,7 +12,7 @@ CodeMirror 6. No backend.
 | `src/store/`                | Zustand stores: `documents` (persisted), `diagram` (runtime pipeline), `viewport` (camera), `ui`                                                                                                                                                                                                                                                                      | `dbml`, `layout`                   |
 | `src/editor/`               | CodeMirror setup, DBML highlighting, completion and block templates, folding, indent guides and wrapping (`blocks.ts`), `bridge.ts`                                                                                                                                                                                                                                   | `store`, `dbml`                    |
 | `src/canvas/`               | Diagram rendering and pointer or keyboard input, inline renaming, relation dragging (`linkDrag.ts`)                                                                                                                                                                                                                                                                   | `store`, `layout`                  |
-| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), code actions (`codeActions.ts`), files (`fileActions.ts`), presentation (`present.ts`), one-time tips (`tips.ts`)                                                                                                                                                      | everything above                   |
+| `src/app/`                  | Header, menus, palette, dialogs, app-level actions, edits from the diagram (`editActions.ts`), code actions (`codeActions.ts`), files (`fileActions.ts`), presentation (`present.ts`), one-time tips (`tips.ts`), the trail of chosen tables (`navigation.ts`), arranging a selection (`arrange.ts`), note coverage (`coverage.ts`)                                   | everything above                   |
 | `src/ui/`                   | Small styled wrappers around Radix primitives, `InlineEdit`                                                                                                                                                                                                                                                                                                           | none                               |
 | `src/lib/`                  | Platform helpers, storage adapter, File System Access wrapper (`files.ts`)                                                                                                                                                                                                                                                                                            | none                               |
 | `src/export/`, `src/share/` | SVG and PNG export, Markdown and Mermaid export, share link encoding (with a view-only flag)                                                                                                                                                                                                                                                                          | `layout`, `store`                  |
@@ -84,6 +84,15 @@ Hint fixes (`fixes.ts`) are described cheaply for every hint (`describeFix`) and
 only when clicked (`fixEdits`), on the text as it is then; both the code tooltip and the
 status bar list use `editActions.applyHintFix`. Formatting goes through
 `codeActions.formatCode`, which applies the formatter's line edits as one transaction.
+
+## Selection
+
+`diagram.selectedTableId` is the one table with details and focus. `multiSelection` holds
+two or more tables chosen together; setting one clears the other (`selectTable`,
+`setMultiSelection`, `toggleInSelection`). The selection rectangle lives in
+`canvas/marquee.ts` in screen pixels and is drawn and resolved by `useCanvasGestures`.
+Dragging or nudging a table of the selection moves all of it. `app/navigation.ts` keeps
+the trail of selected tables by subscribing to the store.
 
 ## View-only links and presentation
 
