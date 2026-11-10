@@ -230,10 +230,136 @@ export function addGroups(
   return accept(source, [appendBlock(source, blocks.join('\n\n'))])
 }
 
-function appendBlock(source: string, block: string): TextEdit {
+/**
+ * Appends a top-level block after one blank line. `before` is the text that will precede it
+ * once the other edits of the same change are applied, which may have removed the old ending.
+ */
+function appendBlock(source: string, block: string, before = source): TextEdit {
   const gap =
-    source.length === 0 ? '' : source.endsWith('\n\n') ? '' : source.endsWith('\n') ? '\n' : '\n\n'
+    before.length === 0 ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
   return { from: source.length, to: source.length, insert: `${gap}${block}\n` }
+}
+
+/** The real tables behind the ids, each once and in the given order; unknown ids are dropped. */
+function pickTables(model: SchemaModel, tableIds: readonly string[]): TableModel[] {
+  const byId = new Map(model.tables.filter(isTable).map((t) => [t.id, t]))
+  return [...new Set(tableIds)].flatMap((id) => {
+    const table = byId.get(id)
+    return table ? [table] : []
+  })
+}
+
+/**
+ * Appends a TableGroup with the given tables. DBML allows a table in one group only, so each
+ * table first leaves the written group it is in, and a group that this leaves empty goes away.
+ */
+export function addGroupFromTables(
+  source: string,
+  model: SchemaModel,
+  name: string,
+  tableIds: readonly string[],
+): TextEdit[] | null {
+  const groupName = name.trim()
+  if (!isUsableName(groupName)) return null
+  // Suggested groups exist only on the canvas, so their names are free to take.
+  const written = model.groups.filter((g) => !g.suggested)
+  if (written.some((g) => g.name === groupName)) return null
+  const tables = pickTables(model, tableIds)
+  if (tables.length === 0) return null
+
+  const edits: TextEdit[] = []
+  for (const group of written) {
+    const leaving = tables.filter((t) => group.tableIds.includes(t.id))
+    if (leaving.length === 0) continue
+    if (leaving.length === group.tableIds.length) {
+      edits.push(blockRemoval(source, group.range))
+      continue
+    }
+    for (const table of leaving) {
+      const edit = memberRemoval(source, group, table)
+      if (!edit) return null
+      edits.push(edit)
+    }
+  }
+
+  const members = tables.map((t) => `  ${spellTable(t)}`).join('\n')
+  const block = `TableGroup ${quoteName(groupName)} {\n${members}\n}`
+  return accept(source, [...edits, appendBlock(source, block, applyEdits(source, edits))])
+}
+
+/** Appends a DiagramView that shows exactly the given tables. */
+export function addView(
+  source: string,
+  model: SchemaModel,
+  name: string,
+  tableIds: readonly string[],
+): TextEdit[] | null {
+  const viewName = name.trim()
+  if (!isUsableName(viewName) || model.views.some((v) => v.name === viewName)) return null
+  const tables = pickTables(model, tableIds)
+  if (tables.length === 0) return null
+  const lines = tables.map((t) => `    ${spellTable(t)}`).join('\n')
+  const block = `DiagramView ${quoteName(viewName)} {\n  Tables {\n${lines}\n  }\n}`
+  return accept(source, [appendBlock(source, block)])
+}
+
+/** The text with comments and strings turned into spaces, so offsets and line breaks stay put. */
+function blankOut(text: string): string {
+  return text.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'''[\s\S]*?'''|'(?:[^'\\\n]|\\.)*'/g, (found) =>
+    found.replace(/[^\n]/g, ' '),
+  )
+}
+
+/** Matches a table reference as a group lists it: by name, schema and name, or alias. */
+function tableReference(table: TableModel): RegExp {
+  const schema = table.schema
+    ? `${spelled(table.schema)}\\s*\\.\\s*`
+    : `(?:${spelled('public')}\\s*\\.\\s*)?`
+  const alias = table.alias ? `|${spelled(table.alias)}` : ''
+  return new RegExp(`^(?:${schema}${spelled(table.name)}${alias})$`)
+}
+
+/**
+ * Takes a table out of a written TableGroup: its whole line, or only the text between the
+ * brace and the line end when it shares a line with the group's opening or closing brace.
+ */
+function memberRemoval(source: string, group: GroupModel, table: TableModel): TextEdit | null {
+  const text = blankOut(source.slice(group.range.from, group.range.to))
+  // A quoted group name may hold a brace, so the body starts at the first one outside quotes.
+  const head = /^(?:[^{"]|"[^"]*")*\{/.exec(text)
+  const close = text.lastIndexOf('}')
+  if (!head || close < head[0].length) return null
+  const reference = tableReference(table)
+
+  const lines = text.slice(head[0].length, close).split('\n')
+  let start = head[0].length
+  for (const [i, line] of lines.entries()) {
+    const end = start + line.length
+    if (reference.test(line.trim())) {
+      const ownLine = i > 0 && i < lines.length - 1
+      return {
+        from: group.range.from + start,
+        to: group.range.from + (ownLine ? end + 1 : end),
+        insert: '',
+      }
+    }
+    start = end + 1
+  }
+  return null
+}
+
+/** Removes a top-level block with the lines it stands on, and one blank line next to it. */
+function blockRemoval(source: string, range: SourceRange): TextEdit {
+  const lineStart = source.lastIndexOf('\n', range.from - 1) + 1
+  const from = source.slice(lineStart, range.from).trim() === '' ? lineStart : range.from
+  const newline = source.indexOf('\n', range.to)
+  const lineEnd = newline === -1 ? source.length : newline + 1
+  let to = source.slice(range.to, lineEnd).trim() === '' ? lineEnd : range.to
+  // Without this the neighbours would end up two blank lines apart.
+  if (from === lineStart && (from === 0 || source.slice(0, from).endsWith('\n\n'))) {
+    to += /^[ \t]*\n/.exec(source.slice(to))?.[0].length ?? 0
+  }
+  return { from, to, insert: '' }
 }
 
 /**
@@ -393,5 +519,46 @@ export function addPrimaryKeyColumn(
       to: lineStart,
       insert: `${indent}${quoteName(name)} ${spellType(type)} [pk]\n`,
     },
+  ])
+}
+
+/**
+ * Adds a column below the table's last own column, so it lands before any `indexes` or Note
+ * block. Columns from a TablePartial are declared elsewhere and give no place to write to.
+ */
+export function addColumn(
+  source: string,
+  model: SchemaModel,
+  tableId: string,
+  name: string,
+  type: string,
+): TextEdit[] | null {
+  const table = model.tables.find((t) => t.id === tableId && isTable(t))
+  const column = name.trim()
+  const columnType = type.trim()
+  if (!table || !isUsableName(column) || !columnType || columnType.includes('"')) return null
+  if (table.columns.some((c) => c.name === column)) return null
+  const own = table.columns.filter(
+    (c) => c.range.from >= table.range.from && c.range.to <= table.range.to,
+  )
+  const last = own.sort((a, b) => b.range.from - a.range.from)[0]
+  if (!last) return null
+
+  // A column that shares the header line has no indentation of its own to copy.
+  const lineStart = source.lastIndexOf('\n', last.range.from - 1) + 1
+  const indent =
+    source.slice(lineStart, last.range.from).trim() === ''
+      ? lineIndent(source, last.range.from)
+      : `${lineIndent(source, last.range.from)}  `
+  const newline = source.indexOf('\n', last.range.to)
+  const lineEnd = newline === -1 ? source.length : newline
+  const rest = source
+    .slice(last.range.to, lineEnd)
+    .replace(/\/\*.*?\*\//g, '')
+    .replace(/\/\/.*$/, '')
+  // A trailing comment stays with its column; a closing brace on the same line moves down.
+  const at = rest.trim() === '' ? lineEnd : last.range.to
+  return accept(source, [
+    { from: at, to: at, insert: `\n${indent}${quoteName(column)} ${spellType(columnType)}` },
   ])
 }
