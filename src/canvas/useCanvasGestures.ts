@@ -1,7 +1,10 @@
 import { useEffect, type RefObject } from 'react'
+import { isTable } from '@/dbml/model'
+import { tableRect } from '@/layout/groups'
 import { isEditableTarget } from '@/lib/platform'
-import { fitContent, selectTable } from '@/store/diagram'
-import { panBy, zoomAt, zoomTo } from '@/store/viewport'
+import { fitContent, selectTable, setMultiSelection, useDiagram } from '@/store/diagram'
+import { panBy, screenToWorld, zoomAt, zoomTo } from '@/store/viewport'
+import { useMarquee, type ScreenRect } from './marquee'
 
 const CLICK_SLOP = 3
 const KEY_PAN = 48
@@ -62,6 +65,25 @@ export function useCanvasGestures(viewportRef: RefObject<HTMLElement | null>): v
 
     const pointers = new Map<number, { x: number; y: number }>()
     let pan: { id: number; x: number; y: number; travelled: number } | null = null
+    // Shift + drag on empty canvas draws a selection rectangle instead of panning.
+    let marquee: { id: number; x: number; y: number; travelled: number } | null = null
+
+    const tablesIn = (rect: ScreenRect) => {
+      const a = screenToWorld({ x: rect.x, y: rect.y })
+      const b = screenToWorld({ x: rect.x + rect.width, y: rect.y + rect.height })
+      const { model, boxes, positions } = useDiagram.getState()
+      return model.tables.filter((table) => {
+        if (!isTable(table)) return false
+        const box = tableRect(table, boxes, positions)
+        return (
+          box !== null &&
+          box.x < b.x &&
+          box.x + box.width > a.x &&
+          box.y < b.y &&
+          box.y + box.height > a.y
+        )
+      })
+    }
     let pinch: { distance: number; x: number; y: number } | null = null
 
     const pinchState = () => {
@@ -72,6 +94,12 @@ export function useCanvasGestures(viewportRef: RefObject<HTMLElement | null>): v
 
     const onPointerDown = (event: PointerEvent) => {
       const background = !isInteractive(event.target)
+      if (event.button === 0 && background && event.shiftKey && !spaceHeld) {
+        const start = localPoint(event)
+        marquee = { id: event.pointerId, x: start.x, y: start.y, travelled: 0 }
+        element.setPointerCapture(event.pointerId)
+        return
+      }
       const wantsPan = event.button === 1 || (event.button === 0 && (background || spaceHeld))
       if (!wantsPan) return
       if (event.button === 1) event.preventDefault()
@@ -88,6 +116,23 @@ export function useCanvasGestures(viewportRef: RefObject<HTMLElement | null>): v
     }
 
     const onPointerMove = (event: PointerEvent) => {
+      if (marquee?.id === event.pointerId) {
+        const point = localPoint(event)
+        marquee.travelled = Math.abs(point.x - marquee.x) + Math.abs(point.y - marquee.y)
+        if (marquee.travelled <= CLICK_SLOP) return
+        const rect = {
+          x: Math.min(point.x, marquee.x),
+          y: Math.min(point.y, marquee.y),
+          width: Math.abs(point.x - marquee.x),
+          height: Math.abs(point.y - marquee.y),
+        }
+        useMarquee.setState({ rect })
+        setMultiSelection(
+          tablesIn(rect).map((t) => t.id),
+          { live: true },
+        )
+        return
+      }
       if (!pointers.has(event.pointerId)) return
       pointers.set(event.pointerId, localPoint(event))
 
@@ -112,6 +157,17 @@ export function useCanvasGestures(viewportRef: RefObject<HTMLElement | null>): v
     }
 
     const onPointerUp = (event: PointerEvent) => {
+      if (marquee?.id === event.pointerId) {
+        if (element.hasPointerCapture(event.pointerId))
+          element.releasePointerCapture(event.pointerId)
+        const rect = useMarquee.getState().rect
+        useMarquee.setState({ rect: null })
+        const dragged = marquee.travelled > CLICK_SLOP && event.type === 'pointerup'
+        marquee = null
+        // One table becomes an ordinary selection with its details; none clears it.
+        setMultiSelection(dragged && rect ? tablesIn(rect).map((t) => t.id) : [])
+        return
+      }
       if (!pointers.has(event.pointerId)) return
       pointers.delete(event.pointerId)
       if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
@@ -130,6 +186,16 @@ export function useCanvasGestures(viewportRef: RefObject<HTMLElement | null>): v
       // Keys act on the canvas while focus is anywhere inside it, e.g. on a table.
       const inside = event.target instanceof Node && element.contains(event.target)
       if (!inside || isEditableTarget(event.target)) return
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        setMultiSelection(
+          useDiagram
+            .getState()
+            .model.tables.filter(isTable)
+            .map((t) => t.id),
+        )
+        return
+      }
       if (event.metaKey || event.ctrlKey || event.altKey) return
       // Space and Enter on a focused control must keep activating that control.
       const onControl =

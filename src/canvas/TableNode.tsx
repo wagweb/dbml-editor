@@ -53,7 +53,9 @@ interface TableNodeProps {
 export const TableNode = memo(
   function TableNode({ table, box, tone, refColumns, relationCount }: TableNodeProps) {
     const position = useDiagram((s) => getOwn(s.positions, table.id))
-    const selected = useDiagram((s) => s.selectedTableId === table.id)
+    const selected = useDiagram(
+      (s) => s.selectedTableId === table.id || s.multiSelection.has(table.id),
+    )
     const pathEnd = useDiagram((s) => s.pathTargetId === table.id)
     const underCursor = useDiagram((s) => s.cursorTableId === table.id)
     const cursorColumn = useDiagram((s) => (s.cursorTableId === table.id ? s.cursorColumn : null))
@@ -91,7 +93,11 @@ export const TableNode = memo(
     const readOnly = useUi((s) => s.viewer !== null)
     const editable = kind === 'table' && !readOnly
     const drag = useDrag({
-      ids: () => [table.id],
+      // A table in a multiple selection takes the others with it.
+      ids: () => {
+        const { multiSelection } = useDiagram.getState()
+        return multiSelection.has(table.id) ? [...multiSelection] : [table.id]
+      },
       onClick: (modifiers) => clickTable(table.id, modifiers),
       onDragChange: setDragging,
     })

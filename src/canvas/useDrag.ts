@@ -19,7 +19,8 @@ interface DragSession {
 interface DragOptions {
   /** Tables that move together; read when the press starts. */
   ids: () => string[]
-  onClick?: (modifiers: { shiftKey: boolean }) => void
+  /** `toggleKey` is Cmd on a Mac and Ctrl elsewhere: add to or take out of a selection. */
+  onClick?: (modifiers: { shiftKey: boolean; toggleKey: boolean }) => void
   onDragChange?: (dragging: boolean) => void
 }
 
@@ -81,7 +82,7 @@ export function useDrag({ ids, onClick, onDragChange }: DragOptions) {
       onDragChange?.(false)
       endDrag()
     } else if (!cancelled) {
-      onClick?.({ shiftKey: event.shiftKey })
+      onClick?.({ shiftKey: event.shiftKey, toggleKey: event.metaKey || event.ctrlKey })
     }
   }
 
