@@ -315,3 +315,14 @@ with `(revised by #N)`.
     decision 48 rules out, and would show an empty strip beside the narrower canvas
     while it opens. The editor inside keeps its full width during the motion, so
     CodeMirror measures and wraps once instead of on every frame.
+71. **2026-11-10: Bundled relations are drawn as bundles.** Asked for by Niklas, who wanted
+    it to be visible that lines were bundled. ELK already routes the relations of one row
+    on a shared line, but drawn as single lines that stretch looked like one relation and
+    every branch like a crossing. Now a shared stretch is heavier the more relations it
+    carries and a dot marks each branch, the wiring diagram convention for a joint.
+    Parallel strands side by side, like a metro map, were considered: they show each
+    relation on its own, but a bundle of seven needs a ribbon over 20 px wide, which does
+    not fit the lanes the layout leaves between cards. Only relations that share a row are
+    bundled, never lines from different rows that happen to run close: that would make it
+    impossible to tell which end belongs to which. The avoiding router joins the bundle of
+    a row too, so a manual arrangement keeps its bundles.

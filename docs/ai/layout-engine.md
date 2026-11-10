@@ -7,7 +7,8 @@ Everything under `src/layout/`. The engine has one job: make relations easy to f
 1. Reading direction is left to right by default. The referenced table (the "one" side)
    sits left of the table that references it (above it with `direction: 'down'`).
 2. A relation attaches to the row of its column, on the left or right edge of the card.
-3. Lines are orthogonal, get their own lane, and do not run behind tables.
+3. Lines are orthogonal and do not run behind tables. Lines from different rows get lanes
+   of their own; the lines of one row share theirs as a bundle.
 4. Tables of a `TableGroup` stay together inside one tinted region.
 5. The order in the DBML source breaks ties, so the diagram stays predictable while typing.
 6. The diagram should fill the screen. A layout that is one long row is a bad layout.
@@ -46,6 +47,24 @@ placed, when the detail level changes and when a hand-arranged document opens. I
 every stored route whose ends still match and that crosses no table, and replaces the
 rest with avoiding routes, stored with their own signature. Engine lanes survive for
 untouched relations; moved tables and lines a table was dropped onto get new ones.
+
+## Bundles
+
+ELK routes the relations of one port, that is one row on one side of a card, as a
+hyperedge: they leave together and share their lanes for as long as they head the same
+way. `bundleEdges` (`bundles.ts`) finds those shared stretches in the finished routes:
+the relations of a row are walked from the row outwards, and two run together while they
+head the same way (points within 0.5 px count as the same place). Every stretch shared by
+two or more relations becomes a piece with its count, every place where some of them
+part becomes a junction, and a line that turns at a junction turns square there. The
+canvas and the SVG export draw both, see "Bundled relations" in `design-language.md`.
+Enum links and loops are left out.
+
+The avoiding router bundles too. `refreshRoutes` keeps the routes that still fit first,
+then routes the others in model order, each with the routes of relations that share one
+of its rows as partners (`routeAvoiding(…, bundleWith)`). Their segments become grid
+lines, and a step along one costs 0.4 of its length, so a new route runs with its
+partners, even round the longer side of a card, instead of in a lane of its own.
 
 Enum cards and sticky notes are ordinary nodes for the layout. The link from a column to
 its enum card is an edge like any other, drawn dashed and without cardinality markers;

@@ -111,11 +111,27 @@ Rules:
 - The selection rectangle is a hairline in the accent over a 7% tint (`.marquee`).
 - Naming a group or view happens inline in the bar, in the inline edit field.
 
+## Bundled relations
+
+- Relations that attach to the same row share a line for as long as they go the same way
+  (`src/layout/bundles.ts`). That stretch is drawn under the single lines and is heavier
+  the more relations run in it: 1.25 px for one, 0.75 px more per relation, at most
+  3.5 px (`bundleWidth`). It thins out at every branch, like a cable losing a wire.
+- A branch gets a dot in the line colour, a little wider than the bundle (+4 px), as on a
+  wiring diagram, and the line that leaves turns there with a square corner. A crossing
+  has no dot, so the two never look alike. Dots keep their size at every zoom level.
+- A bundle turns accent only when all of its relations are lit; otherwise it stays grey
+  and the lit relation runs through it in the accent, so it is clear that only one of
+  the wires is meant. A bundle with nothing lit dims like any other line.
+- Pointing at a bundle lights all of its relations; the tooltip names the row it starts
+  at and lists the columns at the other ends. A click shows the row in the code.
+- Enum links and relations of a table to itself are never bundled.
+
 ## Tooltips on the canvas
 
 - A line under the pointer and a column the pointer rests on explain themselves in an ink
   tooltip. The column tooltip sits beside the card, level with the row, and says type,
-  constraints, default, what it references and its note.
+  constraints, default, what it references and its note. A bundle lists its relations.
 
 ## Motion
 
@@ -256,7 +272,8 @@ Rules:
 `relation-handle-dot`, `inline-edit`, `group-region`, `group-label`, `group-overview`,
 `edge-layer`, `edge`, `edge-hit`, `edge-line`, `edge-marker`, `edge-flow`, `edge-preview`,
 `edge-preview-end`, `edge-preview-label`, `link-preview-layer`, `marquee`,
-`details-header`, `details-context`, `editor-pane`, `editor-pane-body`, `start-screen`,
+`details-header`, `details-context`, `editor-pane`, `editor-pane-body`, `bundle-line`,
+`bundle-junction`, `bundle-hit`, `start-screen`,
 `start-calm`, `start-relation-line`, `start-relation-marker`.
 
 Check a new name against the Tailwind utility list before adding it.

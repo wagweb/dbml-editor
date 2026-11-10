@@ -70,6 +70,10 @@
   without one.
 - Hint rules: switch hint kinds off, choose the naming style, require columns such as
   `created_at` in every table, with a fix that adds them.
+- Bundled relations: relations that attach to the same row and run the same way are
+  drawn as one bundle, heavier the more relations it carries and thinner after each
+  branch, with a dot where one branches off. Pointing at a bundle lights all of its
+  relations and lists them; lines rerouted after a move join the bundle of their row.
 - Layout options in the view menu: left to right or top to bottom, compact, normal or
   airy spacing. Enum cards now sit next to the first table that uses them.
 - Image export dialog: PNG at 1x to 4x, colours like the app, light or dark, solid or
