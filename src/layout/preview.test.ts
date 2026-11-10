@@ -1,10 +1,11 @@
 import { writeFileSync } from 'node:fs'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { describe, it } from 'vitest'
+import { shownModel } from '@/dbml/derive'
 import { parseDbml } from '@/dbml/parse'
 import { SAMPLES } from '@/test/schemas'
 import { LIGHT_PALETTE, renderSvg } from '@/export/svg'
-import { runLayout } from './elk'
+import { DEFAULT_LAYOUT_PREFERENCES, runLayout, type LayoutPreferences } from './elk'
 import {
   approximateMeasure,
   computeTableBox,
@@ -30,13 +31,23 @@ const VARIANTS: Record<string, Record<string, string>> = JSON.parse(
 )
 const ONLY = process.env.PREVIEW_ONLY?.split(',')
 const DETAILS = (process.env.PREVIEW_DETAILS ?? 'full,keys').split(',') as DetailLevel[]
+/** Layout preferences as JSON, e.g. {"direction":"down"}; missing keys take the defaults. */
+const PREFERENCES: LayoutPreferences = {
+  ...DEFAULT_LAYOUT_PREFERENCES,
+  ...(JSON.parse(process.env.PREVIEW_PREFS ?? '{}') as Partial<LayoutPreferences>),
+}
 
 describe.skipIf(!out)('layout preview', () => {
   for (const sample of [...SAMPLES, ...extra].filter((s) => !ONLY || ONLY.includes(s.id))) {
     for (const [variant, overrides] of Object.entries(VARIANTS))
       for (const detail of DETAILS) {
         it(`${sample.id} ${detail} ${variant}`, async () => {
-          const model = parseDbml(sample.source).model!
+          // The cards the app draws: enum and note cards included, as the store lays them out.
+          const model = shownModel(parseDbml(sample.source).model!, {
+            view: null,
+            enums: true,
+            suggestGroups: false,
+          })
           const refColumns = refColumnsByTable(model)
           const boxes = new Map<string, TableBox>(
             model.tables.map((t) => [
@@ -54,6 +65,7 @@ describe.skipIf(!out)('layout preview', () => {
                 width: Number(process.env.PREVIEW_W ?? 1000),
                 height: Number(process.env.PREVIEW_H ?? 760),
               },
+              options: PREFERENCES,
             },
             overrides,
           )

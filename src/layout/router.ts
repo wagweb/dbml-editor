@@ -16,6 +16,11 @@ export interface Anchor {
   y: number
 }
 
+/** Endpoint fingerprint of a stored route; it is only valid while both ends sit there. */
+export function routeSignature(start: Point, end: Point): string {
+  return `${start.x},${start.y}>${end.x},${end.y}`
+}
+
 /** Horizontal run that keeps cardinality markers clear of the first bend. */
 export const STUB = 24
 const SELF_LOOP_REACH = 28

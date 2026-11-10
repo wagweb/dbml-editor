@@ -1,12 +1,45 @@
 import type { ElkExtendedEdge, ElkNode, ElkPort, LayoutOptions } from 'elkjs/lib/elk-api'
 import type { SchemaModel } from '@/dbml/model'
-import { portOffsetY, type TableBox } from './geometry'
+import { placeEnumsNearUsers } from './enums'
+import { GEOMETRY, portOffsetY, type TableBox } from './geometry'
+import { GROUP_INSET } from './groups'
 import { orientRefs } from './orient'
-import { chooseRelaxedPairs, estimateSize, pairKey, type Size, type WeightedEdge } from './relax'
-import { simplify, type Point } from './router'
+import { sidesTopDown, type Extent } from './sides'
+import {
+  chooseRelaxedPairs,
+  estimateSize,
+  pairKey,
+  type Gaps,
+  type Size,
+  type WeightedEdge,
+} from './relax'
+import { routeSignature, simplify, STUB, type Point } from './router'
+
+export { routeSignature } from './router'
 
 export interface ElkLike {
   layout(graph: ElkNode): Promise<ElkNode>
+}
+
+export interface LayoutPreferences {
+  /** 'right' is today's layout: referenced tables left of the tables that reference them. */
+  direction: 'right' | 'down'
+  spacing: 'compact' | 'normal' | 'airy'
+  /** Place each enum card next to the first table that uses it. */
+  enumsNearUsers: boolean
+}
+
+export const DEFAULT_LAYOUT_PREFERENCES: LayoutPreferences = {
+  direction: 'right',
+  spacing: 'normal',
+  enumsNearUsers: true,
+}
+
+/** How far each spacing setting stretches the distances tuned for 'normal'. */
+export const SPACING_FACTORS: Readonly<Record<LayoutPreferences['spacing'], number>> = {
+  compact: 0.7,
+  normal: 1,
+  airy: 1.4,
 }
 
 export interface LayoutRequest {
@@ -25,6 +58,8 @@ export interface LayoutRequest {
    * swap places when only the size of the cards changes.
    */
   stacked?: readonly string[]
+  /** Reading direction, spacing and enum placement; `DEFAULT_LAYOUT_PREFERENCES` if absent. */
+  options?: LayoutPreferences
 }
 
 export type Side = 'E' | 'W'
@@ -46,26 +81,35 @@ export interface LayoutResult {
   stacked?: string[]
 }
 
-/** Space a group reserves around its tables, matching what the canvas draws. */
-export const GROUP_PADDING = { top: 44, side: 20, bottom: 20 } as const
+export interface Padding {
+  top: number
+  side: number
+  bottom: number
+}
+
+/** Space a group reserves around its tables at 'normal' spacing, matching the canvas. */
+export const GROUP_PADDING: Padding = { top: 44, side: 20, bottom: 20 }
 
 const DEFAULT_VIEWPORT: Size = { width: 1280, height: 800 }
 /** Bracket relations are only worth it if the diagram can be shown this much larger. */
 const MIN_WRAP_GAIN = 1.1
 
+/** Distances at 'normal' spacing, in pixels. Other settings scale them. */
+const SPACING = {
+  // Room between layers for cardinality markers and one lane per relation.
+  'elk.layered.spacing.nodeNodeBetweenLayers': 64,
+  'elk.layered.spacing.edgeNodeBetweenLayers': 24,
+  'elk.layered.spacing.edgeEdgeBetweenLayers': 12,
+  'elk.spacing.nodeNode': 28,
+  'elk.spacing.edgeNode': 22,
+  'elk.spacing.edgeEdge': 12,
+  'elk.spacing.componentComponent': 56,
+} as const
+
 /** Applies to the root and to every group, since ELK does not inherit options. */
 const SHARED_OPTIONS: LayoutOptions = {
   'elk.algorithm': 'layered',
-  'elk.direction': 'RIGHT',
   'elk.edgeRouting': 'ORTHOGONAL',
-  // Room between layers for cardinality markers and one lane per relation.
-  'elk.layered.spacing.nodeNodeBetweenLayers': '64',
-  'elk.layered.spacing.edgeNodeBetweenLayers': '24',
-  'elk.layered.spacing.edgeEdgeBetweenLayers': '12',
-  'elk.spacing.nodeNode': '28',
-  'elk.spacing.edgeNode': '22',
-  'elk.spacing.edgeEdge': '12',
-  'elk.spacing.componentComponent': '56',
   'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
   'elk.layered.crossingMinimization.greedySwitch.type': 'TWO_SIDED',
   'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
@@ -74,7 +118,6 @@ const SHARED_OPTIONS: LayoutOptions = {
 }
 
 const ROOT_OPTIONS: LayoutOptions = {
-  ...SHARED_OPTIONS,
   'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
   'elk.json.shapeCoords': 'ROOT',
   'elk.json.edgeCoords': 'ROOT',
@@ -86,25 +129,80 @@ const ROOT_OPTIONS: LayoutOptions = {
   'elk.separateConnectedComponents': 'true',
 }
 
-const TABLE_OPTIONS: LayoutOptions = { 'elk.portConstraints': 'FIXED_POS' }
-
-const GROUP_OPTIONS: LayoutOptions = {
-  ...SHARED_OPTIONS,
-  'elk.padding': `[top=${GROUP_PADDING.top},left=${GROUP_PADDING.side},bottom=${GROUP_PADDING.bottom},right=${GROUP_PADDING.side}]`,
+/**
+ * Top to bottom, ports sit on the side edges, across the flow. Brandes-Koepf then lines up
+ * the right edge of one card with the left edge of the next and builds staircases; network
+ * simplex keeps the lines about 20% shorter on the test schemas at a similar crossing count.
+ */
+const DOWN_OPTIONS: LayoutOptions = {
+  'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
 }
 
-export function routeSignature(start: Point, end: Point): string {
-  return `${start.x},${start.y}>${end.x},${end.y}`
+const TABLE_OPTIONS: LayoutOptions = { 'elk.portConstraints': 'FIXED_POS' }
+
+/** Everything the engine derives from the layout preferences. */
+interface Settings {
+  direction: LayoutPreferences['direction']
+  root: LayoutOptions
+  group: LayoutOptions
+  groupPadding: Padding
+  /** Between layers and between neighbours in a layer; enum placement uses them too. */
+  gaps: Gaps
+}
+
+/**
+ * A scaled distance in steps of half a grid cell, so positions stay on whole pixels and
+ * the steps between the settings stay visible. 'normal' keeps the tuned values exactly.
+ */
+export function scaleDistance(value: number, factor: number): number {
+  if (factor === 1) return value
+  const step = GEOMETRY.grid / 2
+  return Math.max(step, Math.round((value * factor) / step) * step)
+}
+
+function settingsFor(preferences: LayoutPreferences): Settings {
+  const factor = SPACING_FACTORS[preferences.spacing]
+  const distance = (key: keyof typeof SPACING) => scaleDistance(SPACING[key], factor)
+  const spacing: LayoutOptions = Object.fromEntries(
+    Object.keys(SPACING).map((key) => [key, String(distance(key as keyof typeof SPACING))]),
+  )
+  // Only the padding beyond the region the canvas draws (label and tint) is scaled, so a
+  // compact layout never lets one group's tint run into the next.
+  const pad = (key: keyof Padding) =>
+    GROUP_INSET[key] + scaleDistance(GROUP_PADDING[key] - GROUP_INSET[key], factor)
+  const groupPadding: Padding = { top: pad('top'), side: pad('side'), bottom: pad('bottom') }
+  const shared: LayoutOptions = {
+    ...SHARED_OPTIONS,
+    'elk.direction': preferences.direction === 'down' ? 'DOWN' : 'RIGHT',
+    ...spacing,
+    ...(preferences.direction === 'down' ? DOWN_OPTIONS : {}),
+  }
+  return {
+    direction: preferences.direction,
+    root: { ...shared, ...ROOT_OPTIONS },
+    group: {
+      ...shared,
+      'elk.padding': `[top=${groupPadding.top},left=${groupPadding.side},bottom=${groupPadding.bottom},right=${groupPadding.side}]`,
+    },
+    groupPadding,
+    gaps: {
+      layer: distance('elk.layered.spacing.nodeNodeBetweenLayers'),
+      node: distance('elk.spacing.nodeNode'),
+    },
+  }
 }
 
 interface PlannedEdge {
   refId: string
-  /** For a bracket both ends leave eastwards and meet at a junction further right. */
+  /** For a bracket both ends leave towards a junction in a later layer. */
   shape: 'direct' | 'bracket'
+  /** Referenced end: drawn first, left of the other table, or above it for 'down'. */
   leftTableId: string
   rightTableId: string
   leftOffsetY: number
   rightOffsetY: number
+  leftSide: Side
+  rightSide: Side
 }
 
 export async function runLayout(
@@ -116,6 +214,8 @@ export async function runLayout(
   const tables = model.tables.filter((t) => boxes.has(t.id))
   if (tables.length === 0) return { positions: {}, routes: {} }
 
+  const preferences = request.options ?? DEFAULT_LAYOUT_PREFERENCES
+  const settings = settingsFor(preferences)
   const groupOf = new Map(tables.map((t) => [t.id, t.groupId]))
   const blockOf = (tableId: string) => groupOf.get(tableId) ?? tableId
   const orientation = orientRefs(
@@ -139,15 +239,55 @@ export async function runLayout(
       rightTableId: direction.rightTableId,
       leftOffsetY: portOffsetY(leftBox, leftEnd.columns[0]),
       rightOffsetY: portOffsetY(rightBox, rightEnd.columns[0]),
+      ...sidesOf('direct'),
     })
   }
 
-  const layout = async (planned: PlannedEdge[]) =>
-    readResult(await elk.layout(buildGraph(request, planned, overrides)), request, planned)
+  const run = async (planned: PlannedEdge[]) =>
+    readResult(
+      await elk.layout(buildGraph(request, planned, settings, overrides)),
+      request,
+      planned,
+    )
+  const layout = async (planned: PlannedEdge[]) => {
+    const first = await run(planned)
+    if (settings.direction !== 'down') return first
+    // Top to bottom, which edge of a card faces its neighbours is only known once the cards
+    // are placed. A second pass attaches the relations to those edges.
+    const sides = sidesTopDown(
+      planned.map((edge) => ({ upper: edge.leftTableId, lower: edge.rightTableId })),
+      extentsOf(first.positions, boxes),
+    )
+    const adjusted = planned.map((edge, index) => ({
+      ...edge,
+      leftSide: sides[index]!.upper,
+      rightSide: sides[index]!.lower,
+    }))
+    const unchanged = adjusted.every(
+      (edge, index) =>
+        edge.leftSide === planned[index]!.leftSide && edge.rightSide === planned[index]!.rightSide,
+    )
+    return unchanged ? first : run(adjusted)
+  }
+  const finish = (result: LayoutResult, stacked: string[]): LayoutResult => {
+    const done = { ...result, stacked }
+    if (!preferences.enumsNearUsers) return done
+    return {
+      ...done,
+      ...placeEnumsNearUsers({
+        model,
+        boxes,
+        positions: result.positions,
+        routes: result.routes,
+        gap: settings.gaps.layer,
+        clearance: settings.gaps.node,
+      }),
+    }
+  }
   const stack = (pairs: ReadonlySet<string>) =>
     edges.map((edge) =>
       pairs.has(pairKey(blockOf(edge.leftTableId), blockOf(edge.rightTableId)))
-        ? { ...edge, shape: 'bracket' as const }
+        ? { ...edge, shape: 'bracket' as const, ...sidesOf('bracket') }
         : edge,
     )
   const blockPairs = new Set(
@@ -158,18 +298,40 @@ export async function runLayout(
   const kept = request.stacked
   if (request.previous && kept && kept.every((pair) => blockPairs.has(pair))) {
     const pairs = new Set(kept)
-    return { ...(await layout(stack(pairs))), stacked: [...pairs] }
+    return finish(await layout(stack(pairs)), [...pairs])
   }
 
   const plain = await layout(edges)
-  const relaxed = relaxedBlockPairs(request, edges, blockOf)
-  if (relaxed.size === 0) return { ...plain, stacked: [] }
+  const relaxed = relaxedBlockPairs(request, edges, blockOf, settings)
+  if (relaxed.size === 0) return finish(plain, [])
 
   // The choice above rests on an estimate, so the wrapped variant has to prove itself.
   const wrapped = await layout(stack(relaxed))
   const viewport = request.viewport ?? DEFAULT_VIEWPORT
   const gain = fitScale(wrapped, boxes, viewport) / fitScale(plain, boxes, viewport)
-  return gain >= MIN_WRAP_GAIN ? { ...wrapped, stacked: [...relaxed] } : { ...plain, stacked: [] }
+  return gain >= MIN_WRAP_GAIN ? finish(wrapped, [...relaxed]) : finish(plain, [])
+}
+
+/**
+ * Which edge of each card a relation attaches to before anything is placed. A relation
+ * leaves the referenced table on its right edge and enters the other table on its left
+ * edge; a bracket leaves both on the right edge, towards the junction in a later layer.
+ * Top to bottom this is only the first guess, see `sidesTopDown`.
+ */
+function sidesOf(shape: PlannedEdge['shape']): Pick<PlannedEdge, 'leftSide' | 'rightSide'> {
+  return shape === 'bracket' ? { leftSide: 'E', rightSide: 'E' } : { leftSide: 'E', rightSide: 'W' }
+}
+
+function extentsOf(
+  positions: Readonly<Record<string, Point>>,
+  boxes: ReadonlyMap<string, TableBox>,
+): Map<string, Extent> {
+  const extents = new Map<string, Extent>()
+  for (const [id, point] of Object.entries(positions)) {
+    const box = boxes.get(id)
+    if (box) extents.set(id, { x: point.x, width: box.width })
+  }
+  return extents
 }
 
 /** Zoom at which the laid out tables fit the viewport, never above 100%. */
@@ -198,13 +360,19 @@ function fitScale(
   )
 }
 
-/** Decides which pairs of blocks may stack instead of sitting in consecutive columns. */
+const transpose = (size: Size): Size => ({ width: size.height, height: size.width })
+
+/** Decides which pairs of blocks may stack instead of sitting in consecutive layers. */
 function relaxedBlockPairs(
   request: LayoutRequest,
   edges: PlannedEdge[],
   blockOf: (tableId: string) => string,
+  settings: Settings,
 ): Set<string> {
   const { model, boxes } = request
+  // The estimate lays layers out from left to right. Top to bottom is the same drawing
+  // turned by a quarter, so it is estimated on turned sizes against a turned viewport.
+  const turn = settings.direction === 'down' ? transpose : (size: Size) => size
   const members = new Map<string, string[]>()
   for (const table of model.tables) {
     if (!boxes.has(table.id)) continue
@@ -212,22 +380,23 @@ function relaxedBlockPairs(
     members.set(block, [...(members.get(block) ?? []), table.id])
   }
 
+  const padding = settings.groupPadding
   const sizes = new Map<string, Size>()
   for (const [block, tableIds] of members) {
     const inner = edges
       .filter((e) => blockOf(e.leftTableId) === block && blockOf(e.rightTableId) === block)
       .map((e) => ({ from: e.leftTableId, to: e.rightTableId }))
-    const content = estimateSize(new Map(tableIds.map((id) => [id, boxes.get(id)!])), inner)
-    const isGroup = tableIds.length > 1 || block !== tableIds[0]
-    sizes.set(
-      block,
-      isGroup
-        ? {
-            width: content.width + 2 * GROUP_PADDING.side,
-            height: content.height + GROUP_PADDING.top + GROUP_PADDING.bottom,
-          }
-        : content,
+    const content = turn(
+      estimateSize(new Map(tableIds.map((id) => [id, turn(boxes.get(id)!)])), inner, settings.gaps),
     )
+    const isGroup = tableIds.length > 1 || block !== tableIds[0]
+    const size = isGroup
+      ? {
+          width: content.width + 2 * padding.side,
+          height: content.height + padding.top + padding.bottom,
+        }
+      : content
+    sizes.set(block, turn(size))
   }
 
   const between = new Map<string, WeightedEdge>()
@@ -241,7 +410,12 @@ function relaxedBlockPairs(
     else between.set(key, { from, to, weight: 1 })
   }
 
-  return chooseRelaxedPairs(sizes, [...between.values()], request.viewport ?? DEFAULT_VIEWPORT)
+  return chooseRelaxedPairs(
+    sizes,
+    [...between.values()],
+    turn(request.viewport ?? DEFAULT_VIEWPORT),
+    settings.gaps,
+  )
 }
 
 function portId(tableId: string, offsetY: number, side: Side): string {
@@ -256,6 +430,7 @@ const endEdgeId = (refId: string) => `${refId}|end`
 function buildGraph(
   request: LayoutRequest,
   edges: PlannedEdge[],
+  settings: Settings,
   overrides: LayoutOptions,
 ): ElkNode {
   const { model, boxes, previous } = request
@@ -281,8 +456,8 @@ function buildGraph(
     ports.set(tableId, tablePorts)
   }
   for (const edge of edges) {
-    addPort(edge.leftTableId, edge.leftOffsetY, 'E')
-    addPort(edge.rightTableId, edge.rightOffsetY, edge.shape === 'bracket' ? 'E' : 'W')
+    addPort(edge.leftTableId, edge.leftOffsetY, edge.leftSide)
+    addPort(edge.rightTableId, edge.rightOffsetY, edge.rightSide)
   }
 
   const tableNode = (id: string): ElkNode | undefined => {
@@ -316,7 +491,7 @@ function buildGraph(
     if (children.length > 0) {
       groupNodes.set(group.id, {
         id: group.id,
-        layoutOptions: { ...GROUP_OPTIONS, ...overrides },
+        layoutOptions: { ...settings.group, ...overrides },
         children,
       })
     }
@@ -339,18 +514,17 @@ function buildGraph(
     }
   }
 
+  const down = settings.direction === 'down'
   const elkEdges: ElkExtendedEdge[] = []
   for (const edge of edges) {
-    const left = portId(edge.leftTableId, edge.leftOffsetY, 'E')
+    const left = portId(edge.leftTableId, edge.leftOffsetY, edge.leftSide)
+    const right = portId(edge.rightTableId, edge.rightOffsetY, edge.rightSide)
     if (edge.shape === 'direct') {
-      elkEdges.push({
-        id: edge.refId,
-        sources: [left],
-        targets: [portId(edge.rightTableId, edge.rightOffsetY, 'W')],
-      })
+      elkEdges.push({ id: edge.refId, sources: [left], targets: [right] })
       continue
     }
-    // A bracket is two edges that meet in an invisible junction to the right of both tables.
+    // A bracket is two edges that meet in an invisible junction in a later layer, to the
+    // right of both tables (or below both for 'down').
     children.push({
       id: junctionId(edge.refId),
       width: 1,
@@ -359,27 +533,23 @@ function buildGraph(
       ports: [
         {
           id: junctionPort(edge.refId),
-          x: 0,
-          y: 0.5,
+          x: down ? 0.5 : 0,
+          y: down ? 0 : 0.5,
           width: 0,
           height: 0,
-          layoutOptions: { 'elk.port.side': 'WEST' },
+          layoutOptions: { 'elk.port.side': down ? 'NORTH' : 'WEST' },
         },
       ],
     })
     elkEdges.push(
       { id: startEdgeId(edge.refId), sources: [left], targets: [junctionPort(edge.refId)] },
-      {
-        id: endEdgeId(edge.refId),
-        sources: [portId(edge.rightTableId, edge.rightOffsetY, 'E')],
-        targets: [junctionPort(edge.refId)],
-      },
+      { id: endEdgeId(edge.refId), sources: [right], targets: [junctionPort(edge.refId)] },
     )
   }
 
   return {
     id: 'root',
-    layoutOptions: { ...ROOT_OPTIONS, ...overrides },
+    layoutOptions: { ...settings.root, ...overrides },
     children,
     edges: elkEdges,
   }
@@ -428,27 +598,28 @@ function readResult(graph: ElkNode, request: LayoutRequest, edges: PlannedEdge[]
     const rightBox = boxes.get(edge.rightTableId)
     if (!left || !right || !leftBox || !rightBox) continue
 
-    const bracket = edge.shape === 'bracket'
-    const raw = bracket
-      ? joinAtJunction(sections.get(startEdgeId(edge.refId)), sections.get(endEdgeId(edge.refId)))
-      : sections.get(edge.refId)
+    const raw =
+      edge.shape === 'bracket'
+        ? joinAtJunction(sections.get(startEdgeId(edge.refId)), sections.get(endEdgeId(edge.refId)))
+        : sections.get(edge.refId)
     if (!raw) continue
 
-    const start = { x: left.x + leftBox.width, y: left.y + edge.leftOffsetY }
-    const end = {
-      x: bracket ? right.x + rightBox.width : right.x,
-      y: right.y + edge.rightOffsetY,
-    }
+    const start = { x: sideX(left, leftBox, edge.leftSide), y: left.y + edge.leftOffsetY }
+    const end = { x: sideX(right, rightBox, edge.rightSide), y: right.y + edge.rightOffsetY }
     routes[edge.refId] = {
-      points: snapEnds(raw, start, end),
+      points: snapEnds(raw, start, end, edge.leftSide, edge.rightSide),
       startTableId: edge.leftTableId,
-      startSide: 'E',
-      endSide: bracket ? 'E' : 'W',
+      startSide: edge.leftSide,
+      endSide: edge.rightSide,
       signature: routeSignature(start, end),
     }
   }
 
   return { positions: Object.fromEntries(placed), routes }
+}
+
+function sideX(position: Point, box: TableBox, side: Side): number {
+  return side === 'E' ? position.x + box.width : position.x
 }
 
 /** Both halves of a bracket end in the junction; the second half is walked backwards. */
@@ -464,16 +635,25 @@ function joinAtJunction(
  * Tables land on whole pixels, so the route's ends are re-attached to the rounded ports
  * and the neighbouring bends follow to keep every segment axis-aligned.
  */
-function snapEnds(raw: Point[], start: Point, end: Point): Point[] {
+function snapEnds(raw: Point[], start: Point, end: Point, startSide: Side, endSide: Side): Point[] {
   const points = simplify(raw.map((p) => ({ x: p.x, y: p.y })))
-  if (points.length <= 3) {
-    if (start.y === end.y) return [start, end]
-    const middle = start.x === end.x ? start.x + 24 : (start.x + end.x) / 2
-    return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end]
-  }
+  if (points.length <= 3) return elbowBetween(start, end, startSide, endSide)
   points[0] = start
   points[1] = { x: points[1]!.x, y: start.y }
   points[points.length - 1] = end
   points[points.length - 2] = { x: points[points.length - 2]!.x, y: end.y }
   return simplify(points)
+}
+
+/** Replacement for a route that rounding flattened to almost nothing. */
+function elbowBetween(start: Point, end: Point, startSide: Side, endSide: Side): Point[] {
+  if (startSide === endSide) {
+    // Both ends on the same edge: one lane just outside the further of the two.
+    const lane =
+      startSide === 'E' ? Math.max(start.x, end.x) + STUB : Math.min(start.x, end.x) - STUB
+    return simplify([start, { x: lane, y: start.y }, { x: lane, y: end.y }, end])
+  }
+  if (start.y === end.y) return [start, end]
+  const middle = start.x === end.x ? start.x + STUB : (start.x + end.x) / 2
+  return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end]
 }

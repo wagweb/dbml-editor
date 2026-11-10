@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { chooseRelaxedPairs, estimateSize, layersOf, pairKey, type Size } from './relax'
+import {
+  chooseRelaxedPairs,
+  DEFAULT_GAPS,
+  estimateSize,
+  layersOf,
+  pairKey,
+  type Size,
+} from './relax'
 
 const box: Size = { width: 200, height: 200 }
 
@@ -34,6 +41,17 @@ describe('estimateSize', () => {
     expect(chain.width).toBeGreaterThan(fan.width)
     expect(chain.height).toBe(200)
     expect(fan.height).toBeGreaterThan(400)
+  })
+
+  it('uses the gaps it is given between layers and between stacked nodes', () => {
+    const chain = [{ from: 'a', to: 'b' }]
+    const fan = [
+      { from: 'a', to: 'b' },
+      { from: 'a', to: 'c' },
+    ]
+    expect(estimateSize(sizes('a', 'b'), chain, { layer: 10, node: 5 }).width).toBe(410)
+    expect(estimateSize(sizes('a', 'b'), chain).width).toBe(400 + DEFAULT_GAPS.layer)
+    expect(estimateSize(sizes('a', 'b', 'c'), fan, { layer: 10, node: 5 }).height).toBe(405)
   })
 
   it('is empty for no nodes', () => {

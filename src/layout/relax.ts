@@ -10,8 +10,14 @@ export interface WeightedEdge {
   weight: number
 }
 
-const GAP_X = 64
-const GAP_Y = 28
+/** Distances the layered drawing keeps: between layers and between nodes of one layer. */
+export interface Gaps {
+  layer: number
+  node: number
+}
+
+/** The engine's spacing at the 'normal' setting. */
+export const DEFAULT_GAPS: Gaps = { layer: 64, node: 28 }
 /** A relation is only bent into a bracket if the diagram gets at least this much larger. */
 const MIN_GAIN = 1.12
 const MAX_ROUNDS = 8
@@ -50,6 +56,7 @@ export function layersOf(
 export function estimateSize(
   sizes: ReadonlyMap<string, Size>,
   edges: readonly Pick<WeightedEdge, 'from' | 'to'>[],
+  gaps: Gaps = DEFAULT_GAPS,
 ): Size {
   const nodes = [...sizes.keys()]
   if (nodes.length === 0) return { width: 0, height: 0 }
@@ -62,10 +69,10 @@ export function estimateSize(
     const size = sizes.get(node)!
     widths.set(index, Math.max(widths.get(index) ?? 0, size.width))
     const stacked = heights.get(index)
-    heights.set(index, stacked === undefined ? size.height : stacked + GAP_Y + size.height)
+    heights.set(index, stacked === undefined ? size.height : stacked + gaps.node + size.height)
   }
 
-  let width = (widths.size - 1) * GAP_X
+  let width = (widths.size - 1) * gaps.layer
   for (const value of widths.values()) width += value
   return { width, height: Math.max(...heights.values()) }
 }
@@ -80,6 +87,7 @@ export function chooseRelaxedPairs(
   sizes: ReadonlyMap<string, Size>,
   edges: readonly WeightedEdge[],
   viewport: Size,
+  gaps: Gaps = DEFAULT_GAPS,
 ): Set<string> {
   const relaxed = new Set<string>()
   let hard = [...edges]
@@ -94,7 +102,7 @@ export function chooseRelaxedPairs(
   let budget = Math.max(1, Math.floor(totalWeight / 3))
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    const currentFit = fit(estimateSize(sizes, hard))
+    const currentFit = fit(estimateSize(sizes, hard, gaps))
     if (currentFit >= 1) break
 
     let best: { edge: WeightedEdge; score: number } | null = null
@@ -103,6 +111,7 @@ export function chooseRelaxedPairs(
       const trial = estimateSize(
         sizes,
         hard.filter((other) => other !== edge),
+        gaps,
       )
       const gain = fit(trial) / currentFit
       if (gain < MIN_GAIN) continue
