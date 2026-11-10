@@ -1,16 +1,18 @@
 import {
+  addGroupFromTables,
   addGroups,
   addIndex,
   addRelation,
   applyEdits,
   diffEdit,
   renameColumn,
+  addView,
   renameTable,
   type TextEdit,
 } from '@/dbml/edit'
 import { describeFix, fixEdits } from '@/dbml/fixes'
 import type { Hint } from '@/dbml/hints'
-import { qualifiedId, type GroupModel, type SchemaModel } from '@/dbml/model'
+import { isTable, qualifiedId, type GroupModel, type SchemaModel } from '@/dbml/model'
 import { parseDbml } from '@/dbml/parse'
 import { applyEditorEdits, editorText, undoEditor } from '@/editor/bridge'
 import { tableTitle } from '@/layout/geometry'
@@ -147,4 +149,34 @@ export function applyHintFix(hint: Hint): boolean {
   const fix = schema && describeFix(hint, schema.model)
   if (!schema || !fix) return false
   return commit(fixEdits(hint, schema.source, schema.model), fix.done, 'This cannot be fixed here')
+}
+
+/** The selected tables, as the code knows them; cards that are not tables are left out. */
+function selectedTables(model: SchemaModel): string[] {
+  const ids = useDiagram.getState().multiSelection
+  return model.tables.filter((t) => isTable(t) && ids.has(t.id)).map((t) => t.id)
+}
+
+/** Writes the selected tables into the code as a TableGroup, taking them out of others. */
+export function groupFromSelection(name: string): boolean {
+  const schema = currentSchema()
+  if (!schema) return false
+  const ids = selectedTables(schema.model)
+  return commit(
+    addGroupFromTables(schema.source, schema.model, name, ids),
+    `Added group ${name} with ${ids.length} tables`,
+    `${name} cannot be used as a group name here`,
+  )
+}
+
+/** Writes the selected tables into the code as a DiagramView. */
+export function viewFromSelection(name: string): boolean {
+  const schema = currentSchema()
+  if (!schema) return false
+  const ids = selectedTables(schema.model)
+  return commit(
+    addView(schema.source, schema.model, name, ids),
+    `Added view ${name}. Pick it from the views at the top left.`,
+    `${name} cannot be used as a view name here`,
+  )
 }

@@ -4,16 +4,19 @@ import { arrangeWithUndo, closeDetails } from '@/app/actions'
 import { CommandPalette } from '@/app/CommandPalette'
 import { APP_NAME } from '@/app/constants'
 import { Header } from '@/app/Header'
+import { HintRulesDialog } from '@/app/HintRulesDialog'
+import { ImageExportDialog } from '@/app/ImageExportDialog'
 import { ShortcutsDialog } from '@/app/ShortcutsDialog'
 import { Splitter } from '@/app/Splitter'
 import { SqlExportDialog, SqlImportDialog } from '@/app/SqlDialogs'
 import { StatusBar } from '@/app/StatusBar'
 import { checkFileOnDisk, openDropped, openFile, saveFile } from '@/app/fileActions'
+import { goBack, goForward } from '@/app/navigation'
 import { onFullscreenChange, startPresenting } from '@/app/present'
 import { StartScreen } from '@/app/StartScreen'
 import { Canvas } from '@/canvas/Canvas'
 import { CodeEditor } from '@/editor/CodeEditor'
-import { isEditableTarget } from '@/lib/platform'
+import { isEditableTarget, prefersReducedMotion } from '@/lib/platform'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { closeDocument, openDocument } from '@/store/diagram'
 import {
@@ -32,7 +35,18 @@ function useTheme(): void {
   const theme = useUi((s) => s.theme)
   useEffect(() => {
     const apply = () => {
-      document.documentElement.dataset.theme = resolveTheme(theme)
+      const next = resolveTheme(theme)
+      const root = document.documentElement
+      if (root.dataset.theme === next) return
+      // A change of theme cross-fades the whole page; the first paint just takes it.
+      const fade = root.dataset.theme !== undefined && !prefersReducedMotion()
+      if (fade && document.startViewTransition) {
+        document.startViewTransition(() => {
+          root.dataset.theme = next
+        })
+      } else {
+        root.dataset.theme = next
+      }
     }
     apply()
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -74,6 +88,19 @@ function useGlobalShortcuts(): void {
         event.preventDefault()
         ui.toast.action.run()
         ui.dismissToast(ui.toast.id)
+        return
+      }
+      // Alt + arrows walk the trail of chosen tables. In text they move by word instead.
+      if (
+        event.altKey &&
+        !mod &&
+        !event.shiftKey &&
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+        !isEditableTarget(event.target)
+      ) {
+        event.preventDefault()
+        if (event.key === 'ArrowLeft') goBack()
+        else goForward()
         return
       }
       // Single-key shortcuts must not fire while someone is typing, and not for keys an
@@ -291,6 +318,8 @@ export default function App() {
       <DropOverlay />
       <CommandPalette />
       <SqlExportDialog />
+      <ImageExportDialog />
+      <HintRulesDialog />
       <SqlImportDialog />
       <ShortcutsDialog />
       <Toaster />

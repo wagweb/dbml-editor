@@ -1,5 +1,5 @@
 import { TriangleAlert } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { goToFirstProblem, insertStarterTable } from '@/app/actions'
 import { STARTER_TABLE } from '@/dbml/starter'
 import { refColumnsByTable } from '@/layout/geometry'
@@ -12,13 +12,16 @@ import { Button } from '@/ui/Button'
 import { CodeSnippet } from '@/ui/CodeSnippet'
 import { CanvasChips } from './CanvasChips'
 import { CanvasToolbar } from './CanvasToolbar'
+import { ColumnTooltip } from './ColumnTooltip'
 import { EdgeLayer, LinkPreviewLayer } from './EdgeLayer'
 import { EdgeTooltip } from './EdgeTooltip'
 import { GroupLayer, GroupOverviewLabels } from './GroupLayer'
 import { Inspector } from './Inspector'
 import { useLinkDrag } from './linkDrag'
+import { useMarquee } from './marquee'
 import { Minimap } from './Minimap'
 import { PresentBar } from './PresentBar'
+import { SelectionBar } from './SelectionBar'
 import { TableNode } from './TableNode'
 import { TipBubble } from './TipBubble'
 import { useCanvasGestures } from './useCanvasGestures'
@@ -39,6 +42,7 @@ export const Canvas = memo(function Canvas() {
   const ready = useDiagram((s) => s.ready)
   const stale = useDiagram((s) => s.stale)
   const animating = useDiagram((s) => s.animating)
+  const drawingFrom = useDiagram((s) => s.drawingFrom)
   const linking = useLinkDrag((s) => s.from !== null)
   const minimapOpen = useUi((s) => s.minimapOpen)
   const presenting = useUi((s) => s.presenting)
@@ -170,6 +174,7 @@ export const Canvas = memo(function Canvas() {
           <CanvasChips />
           {!empty && <CanvasToolbar />}
           <Inspector />
+          <SelectionBar />
           <TipBubble />
         </>
       )}
@@ -178,6 +183,8 @@ export const Canvas = memo(function Canvas() {
         ref={worldRef}
         className="canvas-world"
         data-animating={animating}
+        data-drawing={drawingFrom !== null}
+        style={{ '--draw-from': `${drawingFrom ?? 0}ms` } as CSSProperties}
         data-linking={linking}
       >
         {ready && (
@@ -208,7 +215,7 @@ export const Canvas = memo(function Canvas() {
       {stale && !empty && (
         <div
           data-canvas-interactive
-          className="absolute top-4 left-1/2 z-10 flex w-max max-w-[calc(100%-24px)] -translate-x-1/2 animate-pop-in items-center gap-2 rounded-[10px] bg-surface py-1 pr-1 pl-3 text-[13px] shadow-pop"
+          className="absolute top-4 left-1/2 z-10 flex w-max max-w-[calc(100%-24px)] -translate-x-1/2 animate-drop-in items-center gap-2 rounded-[10px] bg-surface py-1 pr-1 pl-3 text-[13px] shadow-pop"
         >
           <TriangleAlert aria-hidden className="size-4 shrink-0 text-warn" />
           <span className="text-ink-2">Showing the last version without errors</span>
@@ -221,6 +228,8 @@ export const Canvas = memo(function Canvas() {
       {empty && <EmptyState hasProblem={stale} />}
 
       <EdgeTooltip />
+      <ColumnTooltip />
+      <MarqueeBox />
       {minimapOpen && !empty && !presenting && <Minimap />}
     </section>
   )
@@ -261,5 +270,18 @@ function EmptyState({ hasProblem }: { hasProblem: boolean }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/** The rectangle Shift + drag draws to choose several tables. */
+function MarqueeBox() {
+  const rect = useMarquee((s) => s.rect)
+  if (!rect) return null
+  return (
+    <div
+      aria-hidden
+      className="marquee"
+      style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+    />
   )
 }

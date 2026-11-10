@@ -1,5 +1,6 @@
 import {
   Braces,
+  Check,
   Code2,
   Database,
   Download,
@@ -10,6 +11,7 @@ import {
   IndentIncrease,
   Keyboard,
   Link2,
+  ListChecks,
   Network,
   PanelLeft,
   Presentation,
@@ -17,9 +19,12 @@ import {
   Shapes,
   SlidersHorizontal,
   SunMoon,
+  Workflow,
 } from 'lucide-react'
 import type { IndentStyle } from '@/dbml/format'
+import type { LayoutPreferences } from '@/layout/elk'
 import { activeDocument, useDocuments } from '@/store/documents'
+import { useFlash } from '@/lib/useFlash'
 import { useUi, type ThemePreference } from '@/store/ui'
 import { Button, IconButton } from '@/ui/Button'
 import { Kbd } from '@/ui/Kbd'
@@ -41,14 +46,7 @@ import { APP_NAME, SEARCH_LABEL } from './constants'
 import { DocumentMenu } from './DocumentMenu'
 import { editSharedDiagram } from './actions'
 import { describeIndent, formatCode, indentFor, setIndentation } from './codeActions'
-import {
-  copyMermaid,
-  copyShareLink,
-  exportDbml,
-  exportMarkdown,
-  exportPng,
-  exportSvg,
-} from './exportActions'
+import { copyMermaid, copyShareLink, exportDbml, exportMarkdown } from './exportActions'
 import { startPresenting } from './present'
 import { Logo } from './Logo'
 
@@ -154,16 +152,7 @@ export function Header({ mobile, hasDocument, viewOnly }: HeaderProps) {
               Present
             </Button>
           )}
-          {hasDocument && !viewOnly && (
-            <Button
-              variant="ghost"
-              className="px-2! max-sm:hidden"
-              onClick={() => void copyShareLink()}
-            >
-              <Link2 aria-hidden className="size-4" />
-              Share
-            </Button>
-          )}
+          {hasDocument && !viewOnly && <ShareButton />}
         </div>
 
         {hasDocument && viewOnly && (
@@ -177,6 +166,25 @@ export function Header({ mobile, hasDocument, viewOnly }: HeaderProps) {
         {hasDocument && !viewOnly && <ExportMenu variant="primary" />}
       </div>
     </header>
+  )
+}
+
+/** Copies the link; the button itself confirms it for a moment. */
+function ShareButton() {
+  const [copied, flash] = useFlash()
+  return (
+    <Button
+      variant="ghost"
+      className="px-2! max-sm:hidden"
+      onClick={() => void copyShareLink().then((ok) => ok && flash())}
+    >
+      {copied ? (
+        <Check aria-hidden className="size-4 animate-pop-in text-ok" />
+      ) : (
+        <Link2 aria-hidden className="size-4" />
+      )}
+      Share
+    </Button>
   )
 }
 
@@ -236,6 +244,11 @@ function ViewMenu({ hasDocument, viewOnly }: { hasDocument: boolean; viewOnly: b
             >
               Schema hints
             </MenuCheckItem>
+            {!viewOnly && (
+              <MenuItem icon={<ListChecks />} onSelect={() => ui.openDialog('hint-rules')}>
+                Hint rules
+              </MenuItem>
+            )}
             <MenuCheckItem
               checked={minimapOpen}
               onCheckedChange={() => ui.toggleMinimap()}
@@ -243,6 +256,7 @@ function ViewMenu({ hasDocument, viewOnly }: { hasDocument: boolean; viewOnly: b
             >
               Overview map
             </MenuCheckItem>
+            <LayoutMenu />
             <MenuItem icon={<Presentation />} shortcut="P" onSelect={startPresenting}>
               Present
             </MenuItem>
@@ -290,6 +304,62 @@ function ViewMenu({ hasDocument, viewOnly }: { hasDocument: boolean; viewOnly: b
   )
 }
 
+const DIRECTIONS: { value: LayoutPreferences['direction']; label: string }[] = [
+  { value: 'right', label: 'Left to right' },
+  { value: 'down', label: 'Top to bottom' },
+]
+const SPACINGS: { value: LayoutPreferences['spacing']; label: string }[] = [
+  { value: 'compact', label: 'Compact' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'airy', label: 'Airy' },
+]
+
+/** How the automatic layout arranges the tables; a change lays the diagram out afresh. */
+function LayoutMenu() {
+  const layout = useUi((s) => s.layout)
+  const set = useUi.getState().setLayout
+  const direction = DIRECTIONS.find((d) => d.value === layout.direction)?.label
+  return (
+    <MenuSub>
+      <MenuSubTrigger icon={<Workflow />} hint={direction}>
+        Layout
+      </MenuSubTrigger>
+      <MenuSubContent className="w-56">
+        <MenuLabel>Direction</MenuLabel>
+        <MenuRadioGroup
+          value={layout.direction}
+          onValueChange={(next) => set({ direction: next as LayoutPreferences['direction'] })}
+        >
+          {DIRECTIONS.map((option) => (
+            <MenuRadioItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuLabel>Spacing</MenuLabel>
+        <MenuRadioGroup
+          value={layout.spacing}
+          onValueChange={(next) => set({ spacing: next as LayoutPreferences['spacing'] })}
+        >
+          {SPACINGS.map((option) => (
+            <MenuRadioItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuCheckItem
+          checked={layout.enumsNearUsers}
+          onCheckedChange={(next) => set({ enumsNearUsers: next === true })}
+        >
+          Enums next to their table
+        </MenuCheckItem>
+      </MenuSubContent>
+    </MenuSub>
+  )
+}
+
 /** Spaces or tabs, and how wide, for the open diagram and every new one. */
 function IndentationMenu() {
   const own = useDocuments((s) => (s.activeId ? s.documents[s.activeId]?.indent : undefined))
@@ -328,6 +398,13 @@ function IndentationMenu() {
   )
 }
 
+/** Image exports go through a dialog for resolution, colours and background. */
+function openImageExport(format: 'png' | 'svg') {
+  const ui = useUi.getState()
+  ui.setImageExport({ format })
+  ui.openDialog('export-image')
+}
+
 function ExportMenu({ variant }: { variant: 'primary' | 'secondary' }) {
   const { openDialog } = useUi.getState()
   return (
@@ -339,10 +416,10 @@ function ExportMenu({ variant }: { variant: 'primary' | 'secondary' }) {
         </Button>
       </MenuTrigger>
       <MenuContent align="end" className="w-64">
-        <MenuItem icon={<Image />} hint="PNG" onSelect={() => void exportPng()}>
+        <MenuItem icon={<Image />} hint="PNG" onSelect={() => openImageExport('png')}>
           Image
         </MenuItem>
-        <MenuItem icon={<Shapes />} hint="SVG" onSelect={() => void exportSvg()}>
+        <MenuItem icon={<Shapes />} hint="SVG" onSelect={() => openImageExport('svg')}>
           Vector image
         </MenuItem>
         <MenuItem icon={<Database />} onSelect={() => openDialog('export-sql')}>

@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { DEFAULT_INDENT, type IndentStyle } from '@/dbml/format'
+import { DEFAULT_HINT_RULES, type HintRules } from '@/dbml/hints'
+import { DEFAULT_LAYOUT_PREFERENCES, type LayoutPreferences } from '@/layout/elk'
 import type { ImportDialect } from '@/dbml/sql'
+import { DEFAULT_IMAGE_OPTIONS, type ImageOptions } from '@/export/imageOptions'
 import type { SharedDiagram } from '@/share/encode'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
-export type DialogId = 'export-sql' | 'import-sql' | 'shortcuts'
+export type DialogId = 'export-sql' | 'export-image' | 'import-sql' | 'shortcuts' | 'hint-rules'
 export type MobileView = 'code' | 'diagram'
 /** How many relation steps around the selected table stay in focus. */
 export type FocusDepth = 1 | 2
@@ -59,6 +62,12 @@ interface UiState {
   indent: IndentStyle
   /** Long lines in the code wrap under their indentation instead of scrolling sideways. */
   wrapLines: boolean
+  /** Direction and spacing of the automatic layout, and where enum cards go. */
+  layout: LayoutPreferences
+  /** Which hints show, the naming style names should follow, columns every table needs. */
+  hintRules: HintRules
+  /** Last choices in the image export, used again by the quick commands. */
+  imageExport: ImageOptions & { format: 'png' | 'svg' }
   mobileView: MobileView
   commandOpen: boolean
   paletteMode: PaletteMode
@@ -87,6 +96,9 @@ interface UiState {
   setFocusDepth: (depth: FocusDepth) => void
   setIndent: (indent: IndentStyle) => void
   setWrapLines: (on: boolean) => void
+  setImageExport: (patch: Partial<UiState['imageExport']>) => void
+  setHintRules: (patch: Partial<HintRules>) => void
+  setLayout: (patch: Partial<LayoutPreferences>) => void
   setMobileView: (view: MobileView) => void
   setCommandOpen: (open: boolean) => void
   openPalette: (mode?: PaletteMode) => void
@@ -117,6 +129,9 @@ export const useUi = create<UiState>()(
       focusDepth: 1,
       indent: DEFAULT_INDENT,
       wrapLines: true,
+      imageExport: { ...DEFAULT_IMAGE_OPTIONS, format: 'png' },
+      hintRules: DEFAULT_HINT_RULES,
+      layout: DEFAULT_LAYOUT_PREFERENCES,
       mobileView: 'diagram',
       commandOpen: false,
       paletteMode: ALL_COMMANDS,
@@ -141,10 +156,14 @@ export const useUi = create<UiState>()(
       setFocusDepth: (focusDepth) => set({ focusDepth }),
       setIndent: (indent) => set({ indent }),
       setWrapLines: (wrapLines) => set({ wrapLines }),
+      setImageExport: (patch) => set({ imageExport: { ...get().imageExport, ...patch } }),
+      setHintRules: (patch) => set({ hintRules: { ...get().hintRules, ...patch } }),
+      setLayout: (patch) => set({ layout: { ...get().layout, ...patch } }),
       setMobileView: (mobileView) => set({ mobileView }),
-      // Closing always returns the palette to its plain form.
+      // Opening plainly always gives the plain palette. Closing keeps the mode, so a picker
+      // does not turn into the command list while it fades out.
       setCommandOpen: (commandOpen) =>
-        set(commandOpen ? { commandOpen } : { commandOpen, paletteMode: ALL_COMMANDS }),
+        set(commandOpen ? { commandOpen, paletteMode: ALL_COMMANDS } : { commandOpen }),
       openPalette: (mode = ALL_COMMANDS) => set({ commandOpen: true, paletteMode: mode }),
       openDialog: (dialog) => set(dialog === null ? { dialog, importDraft: null } : { dialog }),
       openImport: (draft) => set({ dialog: 'import-sql', importDraft: draft ?? null }),
@@ -182,6 +201,9 @@ export const useUi = create<UiState>()(
         focusDepth: state.focusDepth,
         indent: state.indent,
         wrapLines: state.wrapLines,
+        imageExport: state.imageExport,
+        hintRules: state.hintRules,
+        layout: state.layout,
       }),
     },
   ),

@@ -11,6 +11,7 @@ import {
   moveTables,
   selectTable,
   setPathTarget,
+  toggleInSelection,
   undoArrange,
   useDiagram,
 } from '@/store/diagram'
@@ -100,7 +101,14 @@ export function focusTable(tableId: string, options: FocusOptions = {}): void {
  * A click on a card selects it. With Shift held and another table already selected, it
  * asks for the path between the two instead.
  */
-export function clickTable(tableId: string, modifiers: { shiftKey: boolean }): void {
+export function clickTable(
+  tableId: string,
+  modifiers: { shiftKey: boolean; toggleKey?: boolean },
+): void {
+  if (modifiers.toggleKey) {
+    toggleInSelection(tableId)
+    return
+  }
   const { model, selectedTableId } = useDiagram.getState()
   const target = model.tables.find((t) => t.id === tableId)
   const selected = model.tables.find((t) => t.id === selectedTableId)
@@ -125,7 +133,11 @@ export function revealTable(tableId: string): void {
  * question is taken back first, so one Escape returns to the plain selection.
  */
 export function closeDetails(): void {
-  const { selectedTableId, pathTargetId } = useDiagram.getState()
+  const { selectedTableId, pathTargetId, multiSelection } = useDiagram.getState()
+  if (multiSelection.size > 0) {
+    selectTable(null)
+    return
+  }
   if (selectedTableId === null) return
   if (pathTargetId !== null) {
     setPathTarget(null)
@@ -139,11 +151,17 @@ export function closeDetails(): void {
 
 /** Moves a table by one step without dragging: the keyboard and single-click route. */
 export function nudgeTable(tableId: string, dx: number, dy: number): void {
-  const { positions, boxes, model } = useDiagram.getState()
-  const table = model.tables.find((t) => t.id === tableId)
-  const rect = table && tableRect(table, boxes, positions)
-  if (!rect) return
-  moveTables(Object.fromEntries([[tableId, { x: rect.x + dx * NUDGE, y: rect.y + dy * NUDGE }]]))
+  const { positions, boxes, model, multiSelection } = useDiagram.getState()
+  // The whole selection moves when the table belongs to one.
+  const ids = multiSelection.has(tableId) ? [...multiSelection] : [tableId]
+  const next: Record<string, { x: number; y: number }> = {}
+  for (const id of ids) {
+    const table = model.tables.find((t) => t.id === id)
+    const rect = table && tableRect(table, boxes, positions)
+    if (rect) next[id] = { x: rect.x + dx * NUDGE, y: rect.y + dy * NUDGE }
+  }
+  if (Object.keys(next).length === 0) return
+  moveTables(next)
   endDrag()
   revealTable(tableId)
 }
@@ -186,7 +204,7 @@ export function toggleTheme(): void {
 }
 
 /** Copies a query that joins the tables of a path, one join per relation step. */
-export async function copyJoinQuery(model: SchemaModel, path: readonly string[]): Promise<void> {
+export async function copyJoinQuery(model: SchemaModel, path: readonly string[]): Promise<boolean> {
   const query = joinQuery(model, path)
   const copied = query !== null && (await copyText(query))
   useUi
@@ -196,6 +214,7 @@ export async function copyJoinQuery(model: SchemaModel, path: readonly string[])
         ? { text: 'Query copied. It joins the tables along the path.' }
         : { text: 'The query could not be copied', tone: 'error' },
     )
+  return copied
 }
 
 /** Turns a diagram from a view-only link into one of this browser's own diagrams. */

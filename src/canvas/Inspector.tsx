@@ -5,6 +5,8 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
+  Check,
+  ChevronLeft,
   ChevronRight,
   Code2,
   Copy,
@@ -26,6 +28,7 @@ import {
 } from 'react'
 import { closeDetails, copyJoinQuery, focusTable, nudgeTable, revealTable } from '@/app/actions'
 import { renameColumnFromDiagram, renameTableFromDiagram } from '@/app/editActions'
+import { backTarget, goBack, useTrail } from '@/app/navigation'
 import { withinSteps } from '@/dbml/graph'
 import {
   describeRefKind,
@@ -39,6 +42,8 @@ import { revealInEditor } from '@/editor/bridge'
 import { tableTitle } from '@/layout/geometry'
 import { tableTones } from '@/layout/groups'
 import { cn } from '@/lib/cn'
+import { useFlash } from '@/lib/useFlash'
+import { usePresence } from '@/lib/usePresence'
 import { setHover, setPathTarget, useDiagram } from '@/store/diagram'
 import { useUi, type DetailsTab, type FocusDepth } from '@/store/ui'
 import { Button, IconButton } from '@/ui/Button'
@@ -55,10 +60,12 @@ export function Inspector() {
   const selectedTableId = useDiagram((s) => s.selectedTableId)
   const minimapOpen = useUi((s) => s.minimapOpen)
   const readOnly = useUi((s) => s.viewer !== null)
-  const table = useMemo(
+  const selected = useMemo(
     () => model.tables.find((t) => t.id === selectedTableId),
     [model, selectedTableId],
   )
+  // The panel plays its way out before it goes, without taking input meanwhile.
+  const { shown: table, leaving } = usePresence(selected, 140)
   const tones = useMemo(() => tableTones(model), [model])
   // The id, not a flag: moving on to another table ends the rename by itself.
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -84,9 +91,11 @@ export function Inspector() {
       data-details
       data-canvas-interactive
       data-canvas-scrollable
+      data-state={leaving ? 'closed' : 'open'}
+      inert={leaving}
       // Leaves room for the overview map below when it is shown.
       className={cn(
-        'absolute top-4 right-4 z-10 flex w-[352px] animate-sheet-in flex-col rounded-panel bg-surface shadow-pop outline-hidden max-md:inset-x-3 max-md:top-auto max-md:bottom-20 max-md:max-h-[52%] max-md:w-auto',
+        'absolute top-4 right-4 z-10 flex w-[352px] animate-sheet-in flex-col rounded-panel bg-surface shadow-pop outline-hidden data-[state=closed]:animate-sheet-out max-md:inset-x-3 max-md:top-auto max-md:bottom-20 max-md:max-h-[52%] max-md:w-auto',
         minimapOpen ? 'md:max-h-[calc(100%-164px)]' : 'md:max-h-[calc(100%-32px)]',
       )}
     >
@@ -98,7 +107,9 @@ export function Inspector() {
         className="details-header flex items-start gap-1 rounded-t-panel pt-2 pr-1.5 pb-2.5 pl-4"
         style={{ '--tone': tone, '--tone-mix': tone ? '14%' : '0%' } as CSSProperties}
       >
-        <div className="min-w-0 flex-1 pt-1">
+        <BackButton />
+        {/* Keyed by table: following a relation slides the new name in. */}
+        <div key={table.id} className="min-w-0 flex-1 animate-content-in pt-1">
           <Context table={table} model={model} />
           {renaming ? (
             <InlineEdit
@@ -161,11 +172,31 @@ export function Inspector() {
       )}
 
       {kind === 'table' && <PathCard table={table} />}
-      {kind === 'table' && <TableTabs table={table} />}
+      {kind === 'table' && <TableTabs key={table.id} table={table} />}
       {kind === 'enum' && <EnumDetails table={table} />}
 
       {kind === 'table' && <Footer table={table} />}
     </aside>
+  )
+}
+
+/** Back to the table chosen before this one, when there is one (Alt + Left). */
+function BackButton() {
+  const trail = useTrail()
+  const model = useDiagram((s) => s.model)
+  const target = backTarget(trail)
+  if (!target) return null
+  const table = model.tables.find((t) => t.id === target)
+  return (
+    <IconButton
+      label={`Back to ${table ? tableTitle(table) : target}`}
+      shortcut="alt+←"
+      tooltipSide="bottom"
+      className="-ml-2.5"
+      onClick={goBack}
+    >
+      <ChevronLeft />
+    </IconButton>
   )
 }
 
@@ -196,6 +227,7 @@ function PathCard({ table }: { table: TableModel }) {
   const pathTargetId = useDiagram((s) => s.pathTargetId)
   const path = useDiagram((s) => s.emphasis.path)
   const headingId = useId()
+  const [copied, flash] = useFlash()
   const target = pathTargetId ? model.tables.find((t) => t.id === pathTargetId) : undefined
   if (!target || !path) return null
   const nameOf = (id: string) => {
@@ -245,9 +277,13 @@ function PathCard({ table }: { table: TableModel }) {
         <Button
           variant="secondary"
           className="mt-3 h-7 px-2.5 text-xs"
-          onClick={() => void copyJoinQuery(model, path)}
+          onClick={() => void copyJoinQuery(model, path).then((ok) => ok && flash())}
         >
-          <Copy aria-hidden className="size-3.5" />
+          {copied ? (
+            <Check aria-hidden className="size-3.5 animate-pop-in text-ok" />
+          ) : (
+            <Copy aria-hidden className="size-3.5" />
+          )}
           Copy SQL query
         </Button>
       )}
@@ -297,16 +333,16 @@ function TableTabs({ table }: { table: TableModel }) {
         <TabList label="Table details" value={tab} tabs={tabs} className="w-full" />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-line">
-        <TabPanel value="columns" className="outline-hidden">
+        <TabPanel value="columns" className="animate-content-in outline-hidden">
           <ColumnList table={table} spotlight={spotlight} />
         </TabPanel>
-        <TabPanel value="relations" className="outline-hidden">
+        <TabPanel value="relations" className="animate-content-in outline-hidden">
           <RelationsPanel table={table} />
         </TabPanel>
-        <TabPanel value="indexes" className="outline-hidden">
+        <TabPanel value="indexes" className="animate-content-in outline-hidden">
           <IndexList table={table} />
         </TabPanel>
-        <TabPanel value="data" className="space-y-3 py-3 outline-hidden">
+        <TabPanel value="data" className="animate-content-in space-y-3 py-3 outline-hidden">
           <h3 className="sr-only">Sample rows</h3>
           {records.map((block, index) => (
             <SampleRows key={index} records={block} />
@@ -391,6 +427,8 @@ function ColumnRow({
 }: ColumnRowProps) {
   const row = useRef<HTMLLIElement>(null)
   const detailsId = useId()
+  // Closing plays the height back down before the details go.
+  const facts = usePresence(open ? column : null, 200)
   const nullable = !column.notNull && !column.pk
   useEffect(() => {
     if (spotlight) row.current?.scrollIntoView({ block: 'nearest' })
@@ -401,7 +439,7 @@ function ColumnRow({
       ref={row}
       data-spotlight={spotlight}
       className={cn(
-        'rounded-control has-[>button:focus-visible]:shadow-[inset_0_0_0_1.5px_var(--accent)]',
+        'rounded-control transition-colors duration-150 has-[>button:focus-visible]:shadow-[inset_0_0_0_1.5px_var(--accent)]',
         open ? 'bg-fill' : 'hover:bg-fill',
       )}
     >
@@ -462,8 +500,19 @@ function ColumnRow({
           />
         </button>
       )}
-      {open && !editing && (
-        <ColumnFacts id={detailsId} table={table} column={column} onEdit={onEdit} />
+      {facts.shown && !editing && (
+        // Grid rows from 0fr to 1fr animate the height to whatever the content needs.
+        <div
+          className={cn(
+            'grid transition-[grid-template-rows] duration-200 ease-out starting:grid-rows-[0fr]',
+            facts.leaving ? 'grid-rows-[0fr] duration-150 ease-in' : 'grid-rows-[1fr]',
+          )}
+          inert={facts.leaving}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <ColumnFacts id={detailsId} table={table} column={column} onEdit={onEdit} />
+          </div>
+        </div>
       )}
     </li>
   )

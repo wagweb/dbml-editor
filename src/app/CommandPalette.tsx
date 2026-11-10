@@ -14,6 +14,7 @@ import {
   Keyboard,
   Layers,
   Link2,
+  ListChecks,
   Maximize,
   Network,
   PanelLeft,
@@ -66,10 +67,10 @@ export function CommandPalette() {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 dark:bg-black/60" />
+        <Dialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 backdrop-blur-[2px] data-[state=closed]:animate-fade-out dark:bg-black/60" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed top-[14vh] left-1/2 z-50 w-[min(580px,calc(100vw-24px))] -translate-x-1/2 animate-pop-in overflow-hidden rounded-panel bg-surface shadow-pop outline-none"
+          className="fixed top-[14vh] left-1/2 z-50 w-[min(580px,calc(100vw-24px))] -translate-x-1/2 animate-pop-in overflow-hidden rounded-panel bg-surface shadow-pop outline-none data-[state=closed]:animate-pop-out"
         >
           <Dialog.Title className="sr-only">{titleFor(mode)}</Dialog.Title>
           {mode.kind === 'all' ? (
@@ -299,6 +300,13 @@ function PaletteCommands({ close }: { close: () => void }) {
 
         {hasDiagram && !readOnly && (
           <Group heading="Code">
+            <Item
+              icon={<ListChecks />}
+              keywords={['lint', 'naming', 'required']}
+              onSelect={run(() => ui.openDialog('hint-rules'))}
+            >
+              Schema hint rules
+            </Item>
             <Item
               icon={<Braces />}
               shortcut="shift+alt+F"

@@ -87,6 +87,11 @@ interface DiagramState {
   stacked: string[]
   ready: boolean
   animating: boolean
+  /**
+   * Set for a moment when a diagram opens or is tidied up: the relations draw themselves
+   * in, left to right, starting this many milliseconds in (after the tables settled).
+   */
+  drawingFrom: number | null
   freshIds: ReadonlySet<string>
   selectedTableId: string | null
   /** Second table of a path question: how does the selected table reach this one? */
@@ -96,6 +101,8 @@ interface DiagramState {
   cursorColumn: string | null
   /** Relations defined at the cursor, or touching the column it is in. */
   cursorRefIds: ReadonlySet<string>
+  /** Two or more tables chosen together, to move, align or turn into a group or a view. */
+  multiSelection: ReadonlySet<string>
   hover: Hover | null
   emphasis: Emphasis
   /** A column that was just found by search; it flashes briefly. */
@@ -119,12 +126,14 @@ export const useDiagram = create<DiagramState>()(() => ({
   stacked: [],
   ready: false,
   animating: false,
+  drawingFrom: null,
   freshIds: new Set(),
   selectedTableId: null,
   pathTargetId: null,
   cursorTableId: null,
   cursorColumn: null,
   cursorRefIds: NO_REFS,
+  multiSelection: NO_REFS,
   hover: null,
   emphasis: NO_EMPHASIS,
   spotlight: null,
@@ -351,7 +360,7 @@ async function layoutAll(
   const viewport = canvasArea()
   try {
     return await withTimeout(
-      runLayout(engine, { model, boxes, viewport, ...seed }),
+      runLayout(engine, { model, boxes, viewport, options: useUi.getState().layout, ...seed }),
       LAYOUT_TIMEOUT_MS,
     )
   } catch (error) {
@@ -366,7 +375,7 @@ async function layoutAll(
     return await withTimeout(
       runLayout(
         engine,
-        { model: flat, boxes, viewport },
+        { model: flat, boxes, viewport, options: useUi.getState().layout },
         { 'elk.layered.considerModelOrder.strategy': 'NONE' },
       ),
       LAYOUT_TIMEOUT_MS,
@@ -523,6 +532,17 @@ async function restoreLayout(
   return true
 }
 
+const DRAW_MS = 1200
+let drawTimer: ReturnType<typeof setTimeout> | undefined
+
+/** The relations draw themselves in once, the canvas's one moment of its own motion. */
+function drawRelations(from: number): void {
+  if (drawTimer) clearTimeout(drawTimer)
+  if (prefersReducedMotion()) return
+  set({ drawingFrom: from })
+  drawTimer = setTimeout(() => set({ drawingFrom: null }), from + DRAW_MS)
+}
+
 function startAnimation(): void {
   if (animationTimer) clearTimeout(animationTimer)
   if (prefersReducedMotion()) {
@@ -584,7 +604,7 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
     fullModel: full,
     model,
     diagnostics: parsed.diagnostics,
-    hints: schemaHints(full),
+    hints: schemaHints(full, useUi.getState().hintRules),
     stale: parsed.model === null,
     detail: doc.layout.detail,
     auto: saved.auto,
@@ -602,6 +622,7 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
     cursorTableId: null,
     cursorColumn: null,
     cursorRefIds: NO_REFS,
+    multiSelection: NO_REFS,
     hover: null,
     emphasis: NO_EMPHASIS,
     spotlight: null,
@@ -623,7 +644,10 @@ export async function openDocument(doc: DiagramDocument): Promise<void> {
     return
   }
 
-  if (await restoreLayout(model, doc.layout.detail, saved, token, {})) frameOpened()
+  if (await restoreLayout(model, doc.layout.detail, saved, token, {})) {
+    frameOpened()
+    drawRelations(0)
+  }
 }
 
 /** Back to the start screen: nothing is open, and nothing that was in flight may land. */
@@ -652,6 +676,7 @@ export function closeDocument(): void {
     cursorTableId: null,
     cursorColumn: null,
     cursorRefIds: NO_REFS,
+    multiSelection: NO_REFS,
     hover: null,
     emphasis: NO_EMPHASIS,
     spotlight: null,
@@ -680,7 +705,12 @@ async function applyModel(full: SchemaModel, diagnostics: Diagnostic[]): Promise
   const version = sourceVersion
   const state = get()
   // The text is valid again right now, whatever happens to the layout below.
-  set({ diagnostics, stale: false, fullModel: full, hints: schemaHints(full) })
+  set({
+    diagnostics,
+    stale: false,
+    fullModel: full,
+    hints: schemaHints(full, useUi.getState().hintRules),
+  })
 
   const model = derive(full, state.view)
   const boxes = computeBoxes(model, state.detail)
@@ -693,6 +723,7 @@ async function applyModel(full: SchemaModel, diagnostics: Diagnostic[]): Promise
     boxes,
     selectedTableId,
     pathTargetId,
+    multiSelection: keptSelection(state.multiSelection, model),
     hover: null,
     emphasis: emphasisFor(model, selectedTableId, pathTargetId, null),
   }
@@ -759,6 +790,11 @@ useUi.subscribe((ui, previous) => {
     const { model, selectedTableId, pathTargetId, hover } = get()
     set({ emphasis: emphasisFor(model, selectedTableId, pathTargetId, hover) })
   }
+  if (ui.hintRules !== previous.hintRules) {
+    set({ hints: schemaHints(get().fullModel, ui.hintRules) })
+  }
+  // A new direction or spacing is a new arrangement, the same as "Tidy up".
+  if (ui.layout !== previous.layout && get().ready) void arrange()
 })
 
 /** Announces a rename made from the diagram, so the selection follows the table. */
@@ -914,6 +950,8 @@ async function relayout(
 
 export async function arrange(): Promise<void> {
   await relayout(get().detail, { remember: true, fresh: true })
+  // After the tables glided to their new places.
+  drawRelations(ANIMATION_MS)
 }
 
 export function undoArrange(): void {
@@ -967,14 +1005,65 @@ export function endDrag(): void {
 }
 
 export function selectTable(tableId: string | null): void {
-  const { model, hover, selectedTableId } = get()
-  if (tableId === selectedTableId) return
-  // A new starting point ends the previous path question.
+  const { model, hover, selectedTableId, multiSelection } = get()
+  if (tableId === selectedTableId && multiSelection.size === 0) return
+  // A new starting point ends the previous path question and any multiple selection.
   set({
     selectedTableId: tableId,
     pathTargetId: null,
+    multiSelection: NO_REFS,
     emphasis: emphasisFor(model, tableId, null, hover),
   })
+}
+
+/**
+ * Chooses several tables at once. One table is an ordinary selection with its details;
+ * two or more have no details and no focus, they are moved or arranged together.
+ */
+export function setMultiSelection(ids: Iterable<string>, options: { live?: boolean } = {}): void {
+  const chosen = [...new Set(ids)]
+  // While a selection rectangle is dragged, one table only gets the ring; its details
+  // would open and close with every move.
+  if (options.live && chosen.length <= 1) {
+    const next = chosen.length === 0 ? NO_REFS : new Set(chosen)
+    if (!sameSet(next, get().multiSelection)) {
+      set({ multiSelection: next, selectedTableId: null, pathTargetId: null })
+    }
+    return
+  }
+  if (chosen.length <= 1) {
+    selectTable(chosen[0] ?? null)
+    return
+  }
+  const { model, hover, multiSelection } = get()
+  const next = new Set(chosen)
+  if (sameSet(next, multiSelection)) return
+  set({
+    multiSelection: next,
+    selectedTableId: null,
+    pathTargetId: null,
+    emphasis: emphasisFor(model, null, null, hover),
+  })
+}
+
+/** Adds a table to the selection or takes it out, starting from a single selection. */
+export function toggleInSelection(tableId: string): void {
+  const { multiSelection, selectedTableId } = get()
+  const current = new Set(
+    multiSelection.size > 0 ? multiSelection : selectedTableId ? [selectedTableId] : [],
+  )
+  if (current.has(tableId)) current.delete(tableId)
+  else current.add(tableId)
+  setMultiSelection(current)
+}
+
+/** A multiple selection without the tables that are gone after an edit. */
+function keptSelection(selection: ReadonlySet<string>, model: SchemaModel): ReadonlySet<string> {
+  if (selection.size === 0) return selection
+  const ids = new Set(model.tables.map((t) => t.id))
+  const kept = [...selection].filter((id) => ids.has(id))
+  if (kept.length === selection.size) return selection
+  return kept.length >= 2 ? new Set(kept) : NO_REFS
 }
 
 /** Asks how the selected table reaches another one; the shortest chain lights up. */
