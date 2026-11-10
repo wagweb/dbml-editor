@@ -36,11 +36,44 @@
   --shadow-pop: var(--shadow-pop);
   --shadow-raised: var(--shadow-raised);
 
+  /*
+   * Motion. Things arrive on --ease-out and leave on --ease-in, and leaving is quicker than
+   * arriving: the next thing is already waiting. Things that arrive on their own (bars,
+   * tips, messages) settle with a small spring. Overlays only: inside the canvas world
+   * nothing animates opacity (see decisions.md, 48).
+   */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
+  --ease-spring: linear(
+    0,
+    0.009,
+    0.035 2.1%,
+    0.141 4.4%,
+    0.723 12.9%,
+    0.938 16.7%,
+    1.017,
+    1.077 22.4%,
+    1.121 25.3%,
+    1.13 27.4%,
+    1.124 30%,
+    1.039 39.6%,
+    1.005 45.4%,
+    0.991 51.1%,
+    0.998 68.2%,
+    1
+  );
 
-  --animate-pop-in: pop-in 140ms var(--ease-out);
+  --animate-pop-in: pop-in 160ms var(--ease-out);
+  --animate-pop-out: pop-out 110ms var(--ease-in) forwards;
   --animate-fade-in: fade-in 160ms ease-out;
-  --animate-sheet-in: sheet-in 220ms var(--ease-out);
+  --animate-fade-out: fade-out 110ms ease-in forwards;
+  --animate-sheet-in: sheet-in 240ms var(--ease-out);
+  --animate-sheet-out: sheet-out 140ms var(--ease-in) forwards;
+  --animate-rise-in: rise-in 420ms var(--ease-spring);
+  --animate-drop-in: drop-in 420ms var(--ease-spring);
+  --animate-sink-out: sink-out 140ms var(--ease-in) forwards;
+  --animate-lift-out: lift-out 140ms var(--ease-in) forwards;
+  --animate-content-in: content-in 200ms var(--ease-out) both;
 }
 
 :root {
@@ -169,6 +202,8 @@
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+    /* The ring grows out from the edge, so a jump of focus is easy to follow. */
+    transition: outline-offset 160ms var(--ease-out);
   }
 
   ::selection {
@@ -201,10 +236,72 @@
   }
 }
 
-@keyframes table-in {
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.985);
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-out {
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+
+/* Small offsets: a bar or tip comes from where it lives, it does not fly in. */
+@keyframes rise-in {
   from {
     opacity: 0;
-    scale: 0.96;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+@keyframes sink-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes lift-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/*
+ * A table that was just written lands: it settles from a little larger, and an accent
+ * halo shrinks into its outline. Scale and shadow only, no opacity on the canvas.
+ */
+@keyframes table-in {
+  from {
+    scale: 1.04;
+    box-shadow:
+      0 0 0 6px color-mix(in oklab, var(--accent) 22%, transparent),
+      0 12px 28px -8px rgb(0 0 0 / 0.25);
   }
 }
 
@@ -321,7 +418,7 @@
 }
 
 .table-node[data-new='true'] {
-  animation: table-in 260ms var(--ease-out);
+  animation: table-in 520ms var(--ease-out);
 }
 
 .canvas-world[data-animating='true'] .table-node {
@@ -336,6 +433,16 @@
     transform 340ms var(--ease-out),
     width 340ms var(--ease-out),
     height 340ms var(--ease-out);
+}
+
+/* The selection rectangle: a hairline in the accent over a faint tint, above the cards. */
+.marquee {
+  position: absolute;
+  z-index: 5;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  pointer-events: none;
 }
 
 /* The details panel's header repeats the selected card's header: same tint, same label. */
@@ -582,6 +689,43 @@
     visibility: hidden;
   }
   56%,
+  100% {
+    visibility: visible;
+  }
+}
+
+/*
+ * Opening a diagram or tidying it up: the relations draw themselves in, left to right,
+ * the way the start screen draws its one relation. The dash offset is repainted, not
+ * composited, so no line gets a GPU layer; markers appear once their line arrives.
+ */
+.canvas-world[data-drawing='true'] .edge:not([data-kind='enum']) .edge-line {
+  stroke-dasharray: 1 1;
+  animation: line-draw 560ms var(--ease-out) both;
+  animation-delay: calc(var(--draw-from, 0ms) + var(--draw-delay, 0ms));
+}
+
+.canvas-world[data-drawing='true'] .edge-marker,
+.canvas-world[data-drawing='true'] .edge[data-kind='enum'] .edge-line {
+  animation: marker-arrive 560ms linear both;
+  animation-delay: calc(var(--draw-from, 0ms) + var(--draw-delay, 0ms));
+}
+
+@keyframes line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes marker-arrive {
+  0%,
+  70% {
+    visibility: hidden;
+  }
+  71%,
   100% {
     visibility: visible;
   }
@@ -1177,4 +1321,11 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* A change of theme cross-fades the page instead of switching in one frame. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--ease-out);
 }

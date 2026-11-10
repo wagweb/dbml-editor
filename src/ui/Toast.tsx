@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/cn'
+import { usePresence } from '@/lib/usePresence'
 import { Kbd } from './Kbd'
 import { useUi } from '@/store/ui'
 
@@ -10,19 +11,21 @@ const VISIBLE_WITH_ACTION_MS = 12_000
 
 /** One message at a time, announced politely to assistive technology. */
 export function Toaster() {
-  const toast = useUi((s) => s.toast)
+  const current = useUi((s) => s.toast)
+  // A message plays its way out; a new one takes its place at once.
+  const { shown: toast, leaving } = usePresence(current, 140)
   const dismissToast = useUi((s) => s.dismissToast)
   // The countdown stops while the pointer or keyboard focus is on the message.
   const [held, setHeld] = useState(false)
 
   useEffect(() => {
-    if (!toast || held) return
+    if (!current || held) return
     const timer = setTimeout(
-      () => dismissToast(toast.id),
-      toast.action ? VISIBLE_WITH_ACTION_MS : VISIBLE_MS,
+      () => dismissToast(current.id),
+      current.action ? VISIBLE_WITH_ACTION_MS : VISIBLE_MS,
     )
     return () => clearTimeout(timer)
-  }, [toast, held, dismissToast])
+  }, [current, held, dismissToast])
 
   return (
     <div
@@ -33,8 +36,10 @@ export function Toaster() {
       {toast && (
         <div
           key={toast.id}
+          data-state={leaving ? 'closed' : 'open'}
+          inert={leaving}
           className={cn(
-            'pointer-events-auto flex min-h-10 max-w-md animate-pop-in items-center gap-3 rounded-panel bg-ink py-1.5 pr-1.5 pl-3.5 text-[13px] font-medium text-canvas shadow-lg',
+            'pointer-events-auto flex min-h-10 max-w-md animate-rise-in items-center gap-3 rounded-panel bg-ink py-1.5 pr-1.5 pl-3.5 text-[13px] font-medium text-canvas shadow-lg data-[state=closed]:animate-sink-out',
             toast.tone === 'error' && 'bg-danger text-white',
           )}
           onPointerEnter={() => setHeld(true)}

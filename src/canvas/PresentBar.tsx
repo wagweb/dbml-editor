@@ -56,7 +56,10 @@ export function PresentBar() {
   return (
     <>
       {'note' in current && current.note && (
-        <p className="absolute bottom-[72px] left-1/2 z-10 w-max max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 rounded-panel bg-surface px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2 shadow-pop">
+        <p
+          key={stop}
+          className="absolute bottom-[72px] left-1/2 z-10 w-max max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 animate-content-in rounded-panel bg-surface px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2 shadow-pop"
+        >
           {current.note}
         </p>
       )}
@@ -64,7 +67,7 @@ export function PresentBar() {
         role="group"
         aria-label="Presentation"
         data-canvas-interactive
-        className="absolute bottom-4 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-1 rounded-[10px] bg-surface p-1 shadow-pop"
+        className="absolute bottom-4 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 animate-rise-in items-center gap-1 rounded-[10px] bg-surface p-1 shadow-pop"
       >
         <IconButton
           label="Previous"

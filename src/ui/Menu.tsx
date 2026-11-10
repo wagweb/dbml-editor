@@ -37,7 +37,7 @@ export function MenuContent({
         alignOffset={alignOffset}
         collisionPadding={8}
         className={cn(
-          'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-52 origin-(--radix-dropdown-menu-content-transform-origin) animate-pop-in overflow-y-auto rounded-panel bg-surface p-1 shadow-pop',
+          'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-52 origin-(--radix-dropdown-menu-content-transform-origin) animate-pop-in overflow-y-auto rounded-panel bg-surface p-1 shadow-pop data-[state=closed]:animate-pop-out',
           className,
         )}
         {...props}
@@ -171,7 +171,7 @@ export function MenuSubContent({
         sideOffset={sideOffset}
         collisionPadding={8}
         className={cn(
-          'z-50 min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) animate-pop-in rounded-panel bg-surface p-1 shadow-pop',
+          'z-50 min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) animate-pop-in rounded-panel bg-surface p-1 shadow-pop data-[state=closed]:animate-pop-out',
           className,
         )}
         {...props}

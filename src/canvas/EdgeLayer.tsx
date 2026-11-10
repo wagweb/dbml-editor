@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, type CSSProperties } from 'react'
 import type { RefModel } from '@/dbml/model'
 import { revealInEditor } from '@/editor/bridge'
 import { computeEdges, type EdgeGeometry } from '@/layout/edges'
@@ -7,6 +7,9 @@ import { roundedPath } from '@/layout/router'
 import { getOwn } from '@/lib/record'
 import { setHover, useDiagram } from '@/store/diagram'
 import { useLinkDrag } from './linkDrag'
+
+/** How long the drawing-in takes to sweep from the leftmost line to the rightmost. */
+const DRAW_SPREAD_MS = 420
 
 /** All relations as one SVG below the tables. Highlighted relations are painted last. */
 export function EdgeLayer() {
@@ -22,6 +25,17 @@ export function EdgeLayer() {
     [model, boxes, positions, routes],
   )
   const refs = useMemo(() => new Map(model.refs.map((r) => [r.id, r])), [model])
+  // When the relations draw themselves in, they go left to right like the reading
+  // direction: each line starts after the ones that begin further left.
+  const drawDelays = useMemo(() => {
+    const starts = edges
+      .map((edge) => ({ id: edge.refId, x: Math.min(...edge.points.map((p) => p.x)) }))
+      .sort((a, b) => a.x - b.x)
+    const last = Math.max(1, starts.length - 1)
+    return new Map(
+      starts.map((edge, rank) => [edge.id, Math.round((rank / last) * DRAW_SPREAD_MS)]),
+    )
+  }, [edges])
 
   // The order stays as it is. Moving lit lines to the end moved their DOM nodes, which
   // cancels their fade: some lines snapped while others faded, which read as a flicker.
@@ -41,6 +55,7 @@ export function EdgeLayer() {
             active={active}
             dimmed={!active && emphasis.focus !== null}
             cursor={cursorRefIds.has(edge.refId)}
+            drawDelay={drawDelays.get(edge.refId) ?? 0}
           />
         )
       })}
@@ -66,10 +81,12 @@ interface EdgeProps {
   dimmed: boolean
   /** The code cursor is in this relation's definition, or in one of its columns. */
   cursor: boolean
+  /** Milliseconds this line waits when the relations draw themselves in. */
+  drawDelay: number
 }
 
 const Edge = memo(
-  function Edge({ edge, reference, active, dimmed, cursor }: EdgeProps) {
+  function Edge({ edge, reference, active, dimmed, cursor, drawDelay }: EdgeProps) {
     return (
       <g
         className="edge"
@@ -78,13 +95,19 @@ const Edge = memo(
         data-cursor={cursor}
         data-kind={reference.kind}
         data-ref-id={edge.refId}
+        style={{ '--draw-delay': `${drawDelay}ms` } as CSSProperties}
         data-canvas-interactive
         onPointerEnter={() => setHover({ kind: 'ref', refId: edge.refId })}
         onPointerLeave={() => setHover(null)}
         onClick={() => revealInEditor(reference.range)}
       >
         <path className="edge-hit" d={edge.path} />
-        <path className="edge-line" d={edge.path} />
+        <path
+          className="edge-line"
+          d={edge.path}
+          // A unit length lets the line draw in with a dash; enum links keep their dashes.
+          pathLength={reference.kind === 'enum' ? undefined : 1}
+        />
         <path className="edge-marker" d={edge.markers} />
         {active && reference.kind !== 'enum' && (
           <path
@@ -106,6 +129,7 @@ const Edge = memo(
     a.active === b.active &&
     a.dimmed === b.dimmed &&
     a.cursor === b.cursor &&
+    a.drawDelay === b.drawDelay &&
     a.reference === b.reference,
 )
 

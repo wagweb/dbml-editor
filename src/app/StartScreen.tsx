@@ -47,15 +47,19 @@ export function StartScreen() {
       <div className="relative mx-auto flex min-h-full w-full max-w-[600px] flex-col justify-center px-6 py-12">
         <Preview />
 
-        <h1 className="mt-10 text-[22px] leading-tight font-semibold tracking-[-0.01em] text-balance text-ink">
+        {/* One composed entrance: the picture, then the words, then the ways in. */}
+        <h1 className="mt-10 animate-content-in text-[22px] leading-tight font-semibold tracking-[-0.01em] text-balance text-ink [animation-delay:60ms]">
           Start a diagram
         </h1>
-        <p className="mt-2 max-w-[54ch] text-sm leading-relaxed text-ink-2">
+        <p className="mt-2 max-w-[54ch] animate-content-in text-sm leading-relaxed text-ink-2 [animation-delay:110ms]">
           Write DBML and the tables arrange themselves, with every relation drawn to the column it
           belongs to. Everything stays in this browser until you save a file.
         </p>
 
-        <ul className="-mx-3 mt-6 flex flex-col gap-0.5" aria-label="Ways to start">
+        <ul
+          className="-mx-3 mt-6 flex flex-col gap-0.5 [&>li]:animate-content-in [&>li:nth-child(1)]:[animation-delay:170ms] [&>li:nth-child(2)]:[animation-delay:210ms] [&>li:nth-child(3)]:[animation-delay:250ms]"
+          aria-label="Ways to start"
+        >
           <StartAction
             primary
             icon={<Plus />}
@@ -83,7 +87,7 @@ export function StartScreen() {
         </ul>
 
         {/* Dropping and pasting need a keyboard and a desktop; on touch screens it is noise. */}
-        <p className="mt-6 text-[13px] leading-relaxed text-ink-2 pointer-coarse:hidden">
+        <p className="mt-6 animate-content-in text-[13px] leading-relaxed text-ink-2 [animation-delay:300ms] pointer-coarse:hidden">
           You can also drop a .dbml or .sql file on this page, or paste DBML or SQL with{' '}
           <Kbd shortcut="mod+V" className="relative -top-px align-middle" />.
         </p>

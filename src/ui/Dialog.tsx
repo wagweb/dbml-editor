@@ -23,10 +23,17 @@ export function Dialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 dark:bg-black/60" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 backdrop-blur-[2px] data-[state=closed]:animate-fade-out dark:bg-black/60" />
         <DialogPrimitive.Content
+          // The dialog itself takes focus, not its close button, which would open with a
+          // ring. A field that focuses itself (the SQL import) keeps it.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            const content = event.currentTarget as HTMLElement
+            if (!content.contains(document.activeElement)) content.focus()
+          }}
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 flex max-h-[min(720px,calc(100dvh-32px))] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 animate-pop-in flex-col rounded-panel bg-surface shadow-pop outline-none',
+            'fixed top-1/2 left-1/2 z-50 flex max-h-[min(720px,calc(100dvh-32px))] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 animate-pop-in flex-col rounded-panel bg-surface shadow-pop outline-none data-[state=closed]:animate-pop-out',
             className,
           )}
         >

@@ -21,7 +21,7 @@ export function Tooltip({ label, shortcut, side = 'top', children }: TooltipProp
           side={side}
           sideOffset={8}
           collisionPadding={8}
-          className="z-50 flex max-w-64 animate-fade-in items-center gap-2 rounded-md bg-ink px-2 py-1 text-xs leading-5 font-medium text-canvas shadow-lg select-none"
+          className="z-50 flex max-w-64 origin-(--radix-tooltip-content-transform-origin) animate-pop-in items-center gap-2 rounded-md bg-ink px-2 py-1 text-xs leading-5 font-medium text-canvas shadow-lg select-none data-[state=closed]:animate-fade-out"
         >
           {label}
           {shortcut && <Kbd plain tone="inverse" shortcut={shortcut} />}

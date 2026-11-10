@@ -31,7 +31,7 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-control px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-100 select-none disabled:opacity-45',
+        'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-control px-3 text-[13px] font-medium whitespace-nowrap transition-[color,background-color,box-shadow,scale] duration-100 select-none active:scale-[0.97] disabled:opacity-45 disabled:active:scale-100',
         VARIANTS[variant],
         className,
       )}
@@ -66,7 +66,7 @@ export function IconButton({
         type={type}
         aria-label={label}
         className={cn(
-          'inline-flex size-8 shrink-0 items-center justify-center rounded-control transition-colors duration-100 select-none disabled:opacity-40 [&_svg]:size-4',
+          'inline-flex size-8 shrink-0 items-center justify-center rounded-control transition-[color,background-color,scale] duration-100 select-none active:scale-[0.94] disabled:opacity-40 disabled:active:scale-100 [&_svg]:size-4',
           active
             ? 'bg-accent-soft text-accent'
             : 'text-ink-2 hover:bg-fill hover:text-ink active:bg-fill-strong data-[state=open]:bg-fill data-[state=open]:text-ink',
