@@ -25,6 +25,30 @@ describe('routeAvoiding', () => {
     expect(isOrthogonal(route.points)).toBe(true)
   })
 
+  it('joins a line that leaves the same row, even round the longer side of a table', () => {
+    const users = table(0, 0)
+    const orders = table(600, 0)
+    const wall = table(350, -100, 100, 250)
+    // Already there: users.id over the top of the wall to a table further up.
+    const partner = [
+      { x: 200, y: 50 },
+      { x: 300, y: 50 },
+      { x: 300, y: -114 },
+      { x: 700, y: -114 },
+      { x: 700, y: -300 },
+      { x: 760, y: -300 },
+    ]
+    // Alone, the line takes the shorter way below the wall.
+    const alone = routeAvoiding(anchor(users), anchor(orders), [wall])
+    expect(Math.max(...alone.points.map((p) => p.y))).toBeGreaterThan(150)
+
+    const bundled = routeAvoiding(anchor(users), anchor(orders), [wall], [partner])
+    // Out of the row, up and along the top together; it leaves the partner past the wall.
+    expect(bundled.points.slice(0, 3)).toEqual(partner.slice(0, 3))
+    expect(bundled.points[3]).toMatchObject({ y: -114 })
+    expect(crossesAny(bundled.points, [wall])).toBe(false)
+  })
+
   it('goes around a table that sits between the two ends', () => {
     const a = table(0, 0)
     const b = table(700, 0)

@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { shownModel } from '@/dbml/derive'
 import { parseDbml } from '@/dbml/parse'
-import { crossesAny } from './avoid'
+import { crossesAny, routeAvoiding } from './avoid'
+import { bundleEdges } from './bundles'
 import { computeEdges, refreshRoutes } from './edges'
 import { routeSignature, type StoredRoute } from './elk'
 import {
@@ -11,6 +12,13 @@ import {
   refColumnsByTable,
   type TableBox,
 } from './geometry'
+import { STUB } from './router'
+
+// The real router, watched, to see which lines a new route is asked to bundle with.
+vi.mock('./avoid', async (actual) => {
+  const module = await actual<typeof import('./avoid')>()
+  return { ...module, routeAvoiding: vi.fn(module.routeAvoiding) }
+})
 
 function setup(source: string) {
   const model = parseDbml(source).model!
@@ -181,6 +189,29 @@ Table wall { id int [pk]
     // The edge layer draws exactly this route afterwards.
     const [edge] = computeEdges(model, boxes, positions, routes)
     expect(edge!.points).toEqual(route.points)
+  })
+
+  it('routes relations of one row as a bundle when their tables were moved', () => {
+    const shared = setup(`
+Table users { id int [pk] }
+Table a { id int [pk]
+  user_id int [ref: > users.id] }
+Table b { id int [pk]
+  user_id int [ref: > users.id] }
+`)
+    const positions = { users: { x: 0, y: 0 }, a: { x: 500, y: 0 }, b: { x: 500, y: 300 } }
+    const routes = refreshRoutes(shared.model, shared.boxes, positions, {})
+    const edges = computeEdges(shared.model, shared.boxes, positions, routes)
+    const { pieces, junctions } = bundleEdges(edges)
+    expect(pieces).toHaveLength(1)
+    expect(pieces[0]!.refIds).toHaveLength(2)
+    // More than the stub out of the row: the second line follows the first one's turn.
+    const [from, to] = [pieces[0]!.points[0]!, pieces[0]!.points.at(-1)!]
+    expect(Math.abs(to.x - from.x) + Math.abs(to.y - from.y)).toBeGreaterThan(STUB)
+    expect(junctions).toHaveLength(1)
+    // The second route was asked to run with the first one.
+    const calls = vi.mocked(routeAvoiding).mock.calls
+    expect(calls.at(-1)![3]).toEqual([routes[shared.model.refs[0]!.id]!.points])
   })
 
   it('forgets routes of relations that are gone and skips unplaced tables', () => {

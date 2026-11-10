@@ -73,6 +73,32 @@ test.describe('desktop', () => {
     await expect(page.getByRole('complementary')).toHaveCount(0)
   })
 
+  test('draws relations that leave one row together as a bundle', async ({ page }) => {
+    // customers.id is referenced by addresses, orders and reviews.
+    await expect(page.locator('.bundle-line').first()).toBeAttached()
+    await expect(page.locator('.bundle-junction').first()).toBeAttached()
+
+    // Pointing at the shared stretch lights all of its relations and lists them.
+    const box = await page.evaluate(() => {
+      const hits = [...document.querySelectorAll<SVGPathElement>('.bundle-hit')]
+      const longest = hits.sort((a, b) => b.getTotalLength() - a.getTotalLength())[0]!
+      const point = longest.getPointAtLength(longest.getTotalLength() / 2)
+      const matrix = longest.getScreenCTM()!
+      return { x: point.x * matrix.a + matrix.e, y: point.y * matrix.d + matrix.f }
+    })
+    await page.mouse.move(box.x, box.y, { steps: 3 })
+    await expect(page.locator('.bundle-line[data-lit="all"]').first()).toBeAttached()
+    // The tooltip follows the pointer from its next move on.
+    await page.mouse.move(box.x + 2, box.y, { steps: 2 })
+    const tip = page.getByRole('tooltip').filter({ hasText: /is referenced by \d+ columns/ })
+    await expect(tip).toBeVisible()
+
+    // A selected table whose relations all run in the bundle turns it accent.
+    await page.mouse.move(5, 5)
+    await table(page, 'customers').click()
+    await expect(page.locator('.bundle-line[data-lit="all"]')).not.toHaveCount(0)
+  })
+
   test('finds a table through search', async ({ page }) => {
     await page.keyboard.press(`${mod}+k`)
     await page.getByPlaceholder('Search tables, columns and actions').fill('review')
