@@ -231,6 +231,50 @@ test.describe('desktop', () => {
     }).toPass()
   })
 
+  test('slides the code panel shut and open like a drawer', async ({ page }) => {
+    const pane = page.locator('section.editor-pane')
+    const full = (await pane.boundingBox())!.width
+    const toggle = page.getByRole('button', { name: 'Code panel' })
+    // Measured inside the page, a frame after the click, so the motion is surely running.
+    const midway = () =>
+      toggle.evaluate(async (button: HTMLElement) => {
+        const section = document.querySelector<HTMLElement>('section.editor-pane')!
+        const body = section.querySelector<HTMLElement>('.editor-pane-body')!
+        button.click()
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+        return {
+          motion: section.dataset.motion,
+          inert: section.inert,
+          pane: section.getBoundingClientRect().width,
+          body: body.getBoundingClientRect().width,
+        }
+      })
+
+    const closing = await midway()
+    expect(closing.motion).toBe('closing')
+    // Out of reach at once, and the code keeps its width, so no line re-wraps on the way.
+    expect(closing.inert).toBe(true)
+    expect(closing.pane).toBeLessThan(full)
+    expect(closing.body).toBeCloseTo(full, 0)
+    await expect(pane).toBeHidden()
+
+    const opening = await midway()
+    expect(opening.motion).toBe('opening')
+    expect(opening.inert).toBe(false)
+    expect(opening.pane).toBeLessThan(full)
+    expect(opening.body).toBeCloseTo(full, 0)
+    await expect(pane).not.toHaveAttribute('data-motion')
+    expect((await pane.boundingBox())!.width).toBeCloseTo(full, 0)
+  })
+
+  test('shows and hides the code at once with reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const pane = page.locator('section.editor-pane')
+    await page.getByRole('button', { name: 'Code panel' }).click()
+    await expect(pane).toBeHidden()
+    await expect(pane).not.toHaveAttribute('data-motion')
+  })
+
   test('remembers edits after a reload', async ({ page }) => {
     await appendCode(page, '\nTable audit_log {\n  id int [pk]\n}\n')
     await expect(table(page, 'audit_log')).toBeVisible()
