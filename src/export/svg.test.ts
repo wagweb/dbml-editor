@@ -7,6 +7,7 @@ import {
   refColumnsByTable,
   type TableBox,
 } from '@/layout/geometry'
+import { computeEdges, refreshRoutes } from '@/layout/edges'
 import { DARK_PALETTE, hiddenLabel, LIGHT_PALETTE, renderSvg } from './svg'
 
 function setup(detail: 'full' | 'keys' | 'names' = 'full') {
@@ -59,6 +60,34 @@ describe('renderSvg', () => {
     expect(width).toBeGreaterThan(300 + users.width)
     expect(height).toBeGreaterThan(40 + users.height)
     expect(svg).toContain(`width="${width}" height="${height}"`)
+  })
+
+  it('takes in lines that leave the cards, so nothing is cut off at the edge', () => {
+    const input = setup()
+    // A route that detours far above every card, as routes around moved tables can.
+    const [ref] = input.model.refs
+    const route = refreshRoutes(input.model, input.boxes, input.positions, {})[ref!.id]!
+    const first = route.points[0]!
+    const last = route.points.at(-1)!
+    const detour = {
+      ...route,
+      points: [
+        first,
+        { x: first.x + 24, y: first.y },
+        { x: first.x + 24, y: -400 },
+        { x: last.x - 24, y: -400 },
+        { x: last.x - 24, y: last.y },
+        last,
+      ],
+    }
+    const routes = { [ref!.id]: detour }
+    const points = computeEdges(input.model, input.boxes, input.positions, routes).flatMap(
+      (edge) => edge.points,
+    )
+    expect(Math.min(...points.map((p) => p.y))).toBe(-400)
+    const { svg } = renderSvg({ ...input, routes, palette: LIGHT_PALETTE })
+    const [, y] = /viewBox="([^"]+)"/.exec(svg)![1]!.split(' ').map(Number)
+    expect(y).toBeLessThan(-400)
   })
 
   it('uses the palette of the chosen theme and can leave the page transparent', () => {

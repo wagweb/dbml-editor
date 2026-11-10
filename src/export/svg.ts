@@ -4,7 +4,7 @@ import { computeEdges } from '@/layout/edges'
 import type { StoredRoute } from '@/layout/elk'
 import { GEOMETRY, NOTE, tableTitle, type TableBox } from '@/layout/geometry'
 import { contentBounds, groupRegions, tableTones } from '@/layout/groups'
-import type { Point } from '@/layout/router'
+import { bounds, type Point } from '@/layout/router'
 
 export interface SvgPalette {
   canvas: string
@@ -65,13 +65,38 @@ export interface SvgExport {
 }
 
 const MARGIN = 40
+/** Room for the cardinality markers and the stroke around a line's outermost point. */
+const EDGE_REACH = 12
 const SANS = "'Geist Variable', 'Geist', ui-sans-serif, system-ui, sans-serif"
 const MONO = "'Geist Mono Variable', 'Geist Mono', ui-monospace, Menlo, monospace"
 
 /** Standalone SVG of the diagram, drawn from the same geometry the canvas uses. */
 export function renderSvg(input: SvgExportInput): SvgExport {
   const { model, boxes, positions, routes, palette } = input
-  const area = contentBounds(model, boxes, positions) ?? { x: 0, y: 0, width: 320, height: 160 }
+  const edges = computeEdges(model, boxes, positions, routes)
+  // Lines can leave the cards' bounding box: a relation of a table to itself loops out to
+  // the side, and routes around cards may pass outside the outermost ones. The page has
+  // to take them in, or they are cut off at the edge of the image.
+  const reach = edges.flatMap((edge) => {
+    const box = bounds(edge.points.map((p) => ({ x: p.x, y: p.y, width: 0, height: 0 })))
+    return box
+      ? [
+          {
+            x: box.x - EDGE_REACH,
+            y: box.y - EDGE_REACH,
+            width: box.width + 2 * EDGE_REACH,
+            height: box.height + 2 * EDGE_REACH,
+          },
+        ]
+      : []
+  })
+  const cards = contentBounds(model, boxes, positions)
+  const area = bounds([...(cards ? [cards] : []), ...reach]) ?? {
+    x: 0,
+    y: 0,
+    width: 320,
+    height: 160,
+  }
   const width = Math.ceil(area.width + 2 * MARGIN)
   const height = Math.ceil(area.height + 2 * MARGIN)
   const tones = tableTones(model)
@@ -101,7 +126,7 @@ export function renderSvg(input: SvgExportInput): SvgExport {
   parts.push(
     `<g fill="none" stroke="${palette.edge}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">`,
   )
-  for (const edge of computeEdges(model, boxes, positions, routes)) {
+  for (const edge of edges) {
     const dash = kindOf.get(edge.refId) === 'enum' ? ' stroke-dasharray="3 4"' : ''
     parts.push(`<path d="${edge.path}"${dash}/>`)
     if (edge.markers) parts.push(`<path d="${edge.markers}"/>`)

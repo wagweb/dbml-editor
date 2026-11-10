@@ -18,26 +18,25 @@ function reportFailure(error: unknown): void {
   useUi.getState().showToast({ text: 'The export failed. Please try again.', tone: 'error' })
 }
 
-export async function exportPng(): Promise<void> {
+/** Downloads the diagram as PNG or SVG with the choices last made in the export dialog. */
+export async function exportImage(format: 'png' | 'svg'): Promise<void> {
   const doc = shownDiagram()
   if (!doc || !hasDiagram()) return
+  const options = useUi.getState().imageExport
   try {
-    downloadBlob(`${fileSlug(doc.name)}.png`, await diagramPng())
+    if (format === 'png') {
+      downloadBlob(`${fileSlug(doc.name)}.png`, await diagramPng(options))
+    } else {
+      const { svg } = await diagramSvg(options)
+      downloadText(`${fileSlug(doc.name)}.svg`, svg, 'image/svg+xml')
+    }
   } catch (error) {
     reportFailure(error)
   }
 }
 
-export async function exportSvg(): Promise<void> {
-  const doc = shownDiagram()
-  if (!doc || !hasDiagram()) return
-  try {
-    const { svg } = await diagramSvg()
-    downloadText(`${fileSlug(doc.name)}.svg`, svg, 'image/svg+xml')
-  } catch (error) {
-    reportFailure(error)
-  }
-}
+export const exportPng = () => exportImage('png')
+export const exportSvg = () => exportImage('svg')
 
 export function exportDbml(): void {
   const doc = shownDiagram()
@@ -70,9 +69,9 @@ export async function copyMermaid(): Promise<void> {
  * The link carries the whole diagram. A view-only link opens without the code and is not
  * saved in the recipient's browser, which suits docs and tickets.
  */
-export async function copyShareLink(options: { viewOnly?: boolean } = {}): Promise<void> {
+export async function copyShareLink(options: { viewOnly?: boolean } = {}): Promise<boolean> {
   const doc = shownDiagram()
-  if (!doc) return
+  if (!doc) return false
   const copied = await copyText(
     shareUrl(
       { name: doc.name, source: doc.source, viewOnly: options.viewOnly },
@@ -85,4 +84,5 @@ export async function copyShareLink(options: { viewOnly?: boolean } = {}): Promi
   useUi
     .getState()
     .showToast(copied ? { text: done } : { text: 'The link could not be copied', tone: 'error' })
+  return copied
 }

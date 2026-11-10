@@ -4,9 +4,24 @@ import { useDiagram } from '@/store/diagram'
 import { resolveTheme, useUi } from '@/store/ui'
 import { DARK_PALETTE, LIGHT_PALETTE, renderSvg, type SvgExport } from './svg'
 
-const PNG_SCALE = 2
-/** Browsers refuse canvases beyond roughly this many pixels per side. */
-const MAX_CANVAS_SIDE = 12_000
+import { DEFAULT_IMAGE_OPTIONS, type ImageOptions } from './imageOptions'
+
+export { DEFAULT_IMAGE_OPTIONS, type ImageOptions }
+
+/**
+ * Browsers refuse canvases beyond 16384 pixels a side and, in Safari, beyond about 268
+ * million pixels in all. Large diagrams are drawn at the highest scale that fits.
+ */
+const MAX_CANVAS_SIDE = 16_384
+const MAX_CANVAS_AREA = 250_000_000
+
+/** The scale a PNG of this size can really get, at most the one asked for. */
+export function pngScale(width: number, height: number, wanted: number): number {
+  const bySide = MAX_CANVAS_SIDE / Math.max(width, height, 1)
+  const byArea = Math.sqrt(MAX_CANVAS_AREA / Math.max(width * height, 1))
+  // Two decimals are plenty and keep the reported size honest.
+  return Math.floor(Math.min(wanted, bySide, byArea) * 100) / 100
+}
 
 let fontCss: Promise<string> | undefined
 
@@ -32,16 +47,34 @@ function embeddedFonts(): Promise<string> {
   return fontCss
 }
 
-export async function diagramSvg(): Promise<SvgExport> {
+export async function diagramSvg(
+  options: Pick<ImageOptions, 'theme' | 'transparent'> = DEFAULT_IMAGE_OPTIONS,
+): Promise<SvgExport> {
   const { model, boxes, positions, routes } = useDiagram.getState()
-  const palette = resolveTheme(useUi.getState().theme) === 'dark' ? DARK_PALETTE : LIGHT_PALETTE
-  return renderSvg({ model, boxes, positions, routes, palette, fontCss: await embeddedFonts() })
+  const theme = options.theme === 'auto' ? resolveTheme(useUi.getState().theme) : options.theme
+  return renderSvg({
+    model,
+    boxes,
+    positions,
+    routes,
+    palette: theme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE,
+    transparent: options.transparent,
+    fontCss: await embeddedFonts(),
+  })
 }
 
-export async function diagramPng(): Promise<Blob> {
-  const { svg, width, height } = await diagramSvg()
-  const scale = Math.min(PNG_SCALE, MAX_CANVAS_SIDE / Math.max(width, height))
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
+export async function diagramPng(options: ImageOptions = DEFAULT_IMAGE_OPTIONS): Promise<Blob> {
+  const { svg, width, height } = await diagramSvg(options)
+  const scale = pngScale(width, height, options.scale)
+  const pixelWidth = Math.round(width * scale)
+  const pixelHeight = Math.round(height * scale)
+  // The SVG gets the target size itself. Some browsers rasterise an SVG at its own size
+  // first and only then scale the bitmap, which blurs text at 2x and more.
+  const sized = svg.replace(
+    `width="${width}" height="${height}"`,
+    `width="${pixelWidth}" height="${pixelHeight}"`,
+  )
+  const url = URL.createObjectURL(new Blob([sized], { type: 'image/svg+xml;charset=utf-8' }))
   try {
     const image = new Image()
     image.decoding = 'sync'
@@ -51,10 +84,12 @@ export async function diagramPng(): Promise<Blob> {
       image.src = url
     })
     const canvas = document.createElement('canvas')
-    canvas.width = Math.round(width * scale)
-    canvas.height = Math.round(height * scale)
+    canvas.width = pixelWidth
+    canvas.height = pixelHeight
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas is not available')
+    // Drawn from the vector source at the target size, so text and lines stay sharp.
+    context.imageSmoothingQuality = 'high'
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
     return await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
