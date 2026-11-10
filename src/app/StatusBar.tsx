@@ -1,17 +1,19 @@
-import { CircleAlert, CircleCheck, Lightbulb, TriangleAlert } from 'lucide-react'
+import { CircleAlert, CircleCheck, Lightbulb, StickyNote, TriangleAlert } from 'lucide-react'
 import { Popover } from 'radix-ui'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { describeFix } from '@/dbml/fixes'
 import type { Hint, HintKind } from '@/dbml/hints'
 import { isTable } from '@/dbml/model'
-import { revealInEditor } from '@/editor/bridge'
+import { editorCursor, revealInEditor } from '@/editor/bridge'
 import { useDiagram } from '@/store/diagram'
 import { useUi } from '@/store/ui'
 import { Button } from '@/ui/Button'
 import { Kbd } from '@/ui/Kbd'
+import { Tooltip } from '@/ui/Tooltip'
 import { RING_ALIGN_OFFSET } from '@/ui/Menu'
 import { focusTable, goToFirstProblem } from './actions'
 import { DBML_DOCS_URL } from './constants'
+import { nextUndocumented, noteCoverage } from './coverage'
 import { addIndexesFromDiagram, applyHintFix } from './editActions'
 
 function count(n: number, singular: string): string {
@@ -79,6 +81,7 @@ export function StatusBar() {
       ) : (
         <>
           {showHints && hints.length > 0 && !first && <HintsButton hints={hints} />}
+          {tables > 0 && !first && <NotesButton />}
           <a
             href={DBML_DOCS_URL}
             target="_blank"
@@ -98,6 +101,7 @@ const HINT_GROUPS: { kind: HintKind; title: string }[] = [
   { kind: 'unindexed-foreign-key', title: 'Foreign keys without an index' },
   { kind: 'type-mismatch', title: 'Relations between different types' },
   { kind: 'naming', title: 'Names that break the pattern' },
+  { kind: 'missing-column', title: 'Tables missing a required column' },
 ]
 
 /** Where a hint points, as the code spells it. */
@@ -141,20 +145,32 @@ function HintsButton({ hints }: { hints: Hint[] }) {
           sideOffset={8}
           collisionPadding={8}
           aria-label="Schema hints"
-          className="z-40 flex max-h-[min(440px,60vh)] w-[min(380px,calc(100vw-24px))] origin-(--radix-popover-content-transform-origin) animate-pop-in flex-col rounded-panel bg-surface shadow-pop outline-none"
+          className="z-40 flex max-h-[min(440px,60vh)] w-[min(380px,calc(100vw-24px))] origin-(--radix-popover-content-transform-origin) animate-pop-in flex-col rounded-panel bg-surface shadow-pop outline-none data-[state=closed]:animate-pop-out"
         >
           <div className="flex items-center justify-between border-b border-line py-1.5 pr-1.5 pl-4">
             <h2 className="text-[13px] font-semibold text-ink">Schema hints</h2>
-            <Button
-              variant="ghost"
-              className="h-7 px-2 text-xs"
-              onClick={() => {
-                useUi.getState().setShowHints(false)
-                setOpen(false)
-              }}
-            >
-              Turn off
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  setOpen(false)
+                  useUi.getState().openDialog('hint-rules')
+                }}
+              >
+                Rules
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  useUi.getState().setShowHints(false)
+                  setOpen(false)
+                }}
+              >
+                Turn off
+              </Button>
+            </div>
           </div>
           <div className="min-h-0 overflow-y-auto overscroll-contain pb-1.5">
             {HINT_GROUPS.map(({ kind, title }) => {
@@ -228,5 +244,42 @@ function HintsButton({ hints }: { hints: Hint[] }) {
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  )
+}
+
+/**
+ * How much of the schema has notes, and a way to the next place without one: the code
+ * opens there, ready to write it.
+ */
+function NotesButton() {
+  const model = useDiagram((s) => s.fullModel)
+  const coverage = useMemo(() => noteCoverage(model), [model])
+  const summary = `Notes on ${coverage.notedTables} of ${count(coverage.tables, 'table')} and ${coverage.notedColumns} of ${count(coverage.columns, 'column')}`
+  const goToNext = () => {
+    const next = nextUndocumented(coverage, editorCursor() ?? -1)
+    if (!next) {
+      useUi.getState().showToast({ text: 'Every table and column has a note' })
+      return
+    }
+    focusTable(next.tableId)
+    revealInEditor(next.range, { focus: true })
+  }
+  return (
+    <Tooltip
+      label={coverage.missing.length > 0 ? `${summary}. Go to the next without one.` : summary}
+    >
+      <button
+        type="button"
+        // The visible percentage leads the name, so voice control can use what it sees.
+        aria-label={`${coverage.percent}% noted. ${
+          coverage.missing.length > 0 ? `${summary}. Go to the next without one` : summary
+        }`}
+        className="flex h-6 shrink-0 items-center gap-1 rounded-control px-1.5 text-xs text-ink-2 tabular-nums hover:bg-fill hover:text-ink"
+        onClick={goToNext}
+      >
+        <StickyNote aria-hidden className="size-3.5" />
+        {coverage.percent}%
+      </button>
+    </Tooltip>
   )
 }

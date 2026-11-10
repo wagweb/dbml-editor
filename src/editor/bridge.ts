@@ -72,6 +72,11 @@ export function replaceEditorText(text: string): boolean {
   return true
 }
 
+/** Where the cursor is in the code, or null before the editor is mounted. */
+export function editorCursor(): number | null {
+  return view ? view.state.selection.main.head : null
+}
+
 /** The text as the editor has it right now, or null before the editor is mounted. */
 export function editorText(): string | null {
   return view ? view.state.doc.toString() : null
