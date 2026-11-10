@@ -1,5 +1,5 @@
 import { FileDown } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { arrangeWithUndo, closeDetails } from '@/app/actions'
 import { CommandPalette } from '@/app/CommandPalette'
 import { APP_NAME } from '@/app/constants'
@@ -136,28 +136,67 @@ function useGlobalShortcuts(): void {
   }, [])
 }
 
+/** Opening takes a little longer than closing: the next thing is already waiting. */
+const PANE_MS = { opening: 320, closing: 240 } as const
+type PaneMotion = keyof typeof PANE_MS
+
 /**
  * Owns the width subscription, so dragging the splitter re-renders this pane only. The
  * editor stays mounted while hidden; undo history and scroll position survive.
+ *
+ * Showing and hiding the code slides the panel like a drawer (see `.editor-pane`). Only a
+ * toggle of the code moves it: starting or ending a presentation, and the switch between
+ * code and diagram on a phone, change the picture at once.
  */
 function EditorPane({ visible, fullWidth }: { visible: boolean; fullWidth: boolean }) {
   const editorWidth = useUi((s) => s.editorWidth)
+  const presenting = useUi((s) => s.presenting)
+  const [seen, setSeen] = useState({ visible, presenting })
+  const [motion, setMotion] = useState<PaneMotion | null>(null)
+  if (seen.visible !== visible || seen.presenting !== presenting) {
+    setSeen({ visible, presenting })
+    const toggled = seen.visible !== visible && seen.presenting === presenting
+    const animate = toggled && !fullWidth && !prefersReducedMotion()
+    setMotion(animate ? (visible ? 'opening' : 'closing') : null)
+  }
+
+  useEffect(() => {
+    if (!motion) return
+    const timer = setTimeout(() => setMotion(null), PANE_MS[motion])
+    return () => clearTimeout(timer)
+  }, [motion])
+
+  const closing = motion === 'closing'
+  const shown = visible || closing
   return (
-    <section
-      aria-label="Code"
-      hidden={!visible}
-      className="flex min-w-0 shrink-0 flex-col bg-panel"
-      style={{ width: fullWidth ? '100%' : editorWidth }}
-    >
-      <p id="editor-help" className="sr-only">
-        Tab indents. To leave the editor with the keyboard, press Escape and then Tab. The status
-        bar shows the same hint while the editor has keyboard focus.
-      </p>
-      <div className="min-h-0 flex-1">
-        <CodeEditor />
-      </div>
-      <StatusBar />
-    </section>
+    <>
+      <section
+        aria-label="Code"
+        hidden={!shown}
+        // Gone for focus and pointer as soon as it starts to close.
+        inert={closing}
+        data-motion={motion ?? undefined}
+        className="editor-pane min-w-0 shrink-0 bg-panel"
+        style={
+          {
+            '--pane-width': fullWidth ? '100%' : `${editorWidth}px`,
+            '--pane-ms': `${PANE_MS[motion ?? 'opening']}ms`,
+          } as CSSProperties
+        }
+      >
+        <div className="editor-pane-body">
+          <p id="editor-help" className="sr-only">
+            Tab indents. To leave the editor with the keyboard, press Escape and then Tab. The
+            status bar shows the same hint while the editor has keyboard focus.
+          </p>
+          <div className="min-h-0 flex-1">
+            <CodeEditor />
+          </div>
+          <StatusBar />
+        </div>
+      </section>
+      {shown && !fullWidth && <Splitter />}
+    </>
   )
 }
 
@@ -305,7 +344,6 @@ export default function App() {
             <>
               <h1 className="sr-only">{name ? `${name}, database diagram` : APP_NAME}</h1>
               {viewer === null && <EditorPane visible={showEditor} fullWidth={mobile} />}
-              {showEditor && !mobile && <Splitter />}
               <div hidden={!showCanvas} className="min-w-0 flex-1">
                 <Canvas />
               </div>

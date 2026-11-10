@@ -44,6 +44,11 @@
    */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
+  /*
+   * For a panel that moves the layout both ways: a softer start than --ease-out, so the
+   * diagram pushed along is readable in its first frames, and no fast ending to stop on.
+   */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-spring: linear(
     0,
     0.009,
@@ -862,6 +867,45 @@
 }
 
 /* ---------------------------------------------------------------- editor */
+
+/*
+ * The code panel opens and closes like a drawer: its width runs between 0 and the chosen
+ * width, and the diagram moves with its edge. Meanwhile the content keeps its full width
+ * and slides in from the left, so the editor never re-wraps its lines frame by frame.
+ * Duration and width come from App.tsx as --pane-ms and --pane-width.
+ */
+.editor-pane {
+  display: flex;
+  justify-content: flex-end;
+  width: var(--pane-width);
+}
+
+.editor-pane-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor-pane[data-motion] {
+  overflow: clip;
+  transition: width var(--pane-ms) var(--ease-drawer);
+}
+
+.editor-pane[data-motion] .editor-pane-body {
+  flex: none;
+  width: var(--pane-width);
+}
+
+.editor-pane[data-motion='closing'] {
+  width: 0;
+}
+
+@starting-style {
+  .editor-pane[data-motion='opening'] {
+    width: 0;
+  }
+}
 
 .cm-editor {
   height: 100%;
