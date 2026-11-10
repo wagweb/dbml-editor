@@ -1,6 +1,13 @@
 import { memo, useMemo, type CSSProperties } from 'react'
-import type { RefModel } from '@/dbml/model'
+import type { RefModel, SchemaModel } from '@/dbml/model'
 import { revealInEditor } from '@/editor/bridge'
+import {
+  bundleEdges,
+  bundleWidth,
+  JUNCTION_GROWTH,
+  type BundleJunction,
+  type BundlePiece,
+} from '@/layout/bundles'
 import { computeEdges, type EdgeGeometry } from '@/layout/edges'
 import { GEOMETRY, portOffsetY, tableTitle } from '@/layout/geometry'
 import { roundedPath } from '@/layout/router'
@@ -20,8 +27,8 @@ export function EdgeLayer() {
   const emphasis = useDiagram((s) => s.emphasis)
   const cursorRefIds = useDiagram((s) => s.cursorRefIds)
 
-  const edges = useMemo(
-    () => computeEdges(model, boxes, positions, routes),
+  const { edges, pieces, junctions } = useMemo(
+    () => bundleEdges(computeEdges(model, boxes, positions, routes)),
     [model, boxes, positions, routes],
   )
   const refs = useMemo(() => new Map(model.refs.map((r) => [r.id, r])), [model])
@@ -40,9 +47,28 @@ export function EdgeLayer() {
   // The order stays as it is. Moving lit lines to the end moved their DOM nodes, which
   // cancels their fade: some lines snapped while others faded, which read as a flicker.
   const ordered = edges
+  const lit = (refIds: readonly string[]) => {
+    const count = refIds.filter((id) => emphasis.refIds.has(id)).length
+    return count === 0 ? 'none' : count === refIds.length ? 'all' : 'some'
+  }
+  const earliest = (refIds: readonly string[]) =>
+    Math.min(...refIds.map((id) => drawDelays.get(id) ?? 0))
 
   return (
     <svg className="edge-layer" width="1" height="1" aria-hidden>
+      {/* Bundles lie under the single lines, which run on inside them. */}
+      {pieces.map((piece) => {
+        const state = lit(piece.refIds)
+        return (
+          <BundleLine
+            key={piece.key}
+            piece={piece}
+            lit={state}
+            dimmed={state === 'none' && emphasis.focus !== null}
+            drawDelay={earliest(piece.refIds)}
+          />
+        )
+      })}
       {ordered.map((edge) => {
         const ref = refs.get(edge.refId)
         if (!ref) return null
@@ -59,9 +85,106 @@ export function EdgeLayer() {
           />
         )
       })}
+      {/* Over the single lines: a pointer on a shared stretch means all of it. */}
+      {pieces.map((piece) => (
+        <BundleHit key={piece.key} piece={piece} model={model} />
+      ))}
+      {junctions.map((junction) => {
+        const state = lit(junction.refIds)
+        return (
+          <Junction
+            key={junction.key}
+            junction={junction}
+            active={state !== 'none'}
+            dimmed={state === 'none' && emphasis.focus !== null}
+            drawDelay={earliest(junction.refIds)}
+          />
+        )
+      })}
     </svg>
   )
 }
+
+interface BundleLineProps {
+  piece: BundlePiece
+  /** How many of the relations in it are lit: a fully lit bundle turns accent. */
+  lit: 'none' | 'some' | 'all'
+  dimmed: boolean
+  drawDelay: number
+}
+
+/** A shared stretch, heavier the more relations run in it. */
+const BundleLine = memo(function BundleLine({ piece, lit, dimmed, drawDelay }: BundleLineProps) {
+  return (
+    <path
+      className="bundle-line"
+      d={piece.path}
+      pathLength={1}
+      data-lit={lit}
+      data-dimmed={dimmed}
+      style={
+        {
+          '--bundle-width': `${bundleWidth(piece.refIds.length)}px`,
+          '--draw-delay': `${drawDelay}ms`,
+        } as CSSProperties
+      }
+    />
+  )
+})
+
+/** The pointer target of a shared stretch: lights every relation in it. */
+const BundleHit = memo(function BundleHit({
+  piece,
+  model,
+}: {
+  piece: BundlePiece
+  model: SchemaModel
+}) {
+  const { root } = piece
+  return (
+    <path
+      className="edge-hit bundle-hit"
+      d={piece.path}
+      data-canvas-interactive
+      onPointerEnter={() =>
+        setHover({ kind: 'bundle', key: piece.key, refIds: piece.refIds, root })
+      }
+      onPointerLeave={() => setHover(null)}
+      onClick={() => {
+        // The row they all share is the thing to look at in the code.
+        const table = model.tables.find((t) => t.id === root.tableId)
+        const column = table?.columns.find((c) => c.name === root.column)
+        if (column) revealInEditor(column.range)
+      }}
+    />
+  )
+})
+
+interface JunctionProps {
+  junction: BundleJunction
+  active: boolean
+  dimmed: boolean
+  drawDelay: number
+}
+
+/** Where relations of a bundle part: a dot, as on a wiring diagram, so it never reads as a crossing. */
+const Junction = memo(function Junction({ junction, active, dimmed, drawDelay }: JunctionProps) {
+  const { point, refIds } = junction
+  return (
+    <path
+      className="bundle-junction"
+      d={`M${point.x} ${point.y}h0`}
+      data-active={active}
+      data-dimmed={dimmed}
+      style={
+        {
+          '--junction-size': `${bundleWidth(refIds.length) + JUNCTION_GROWTH}px`,
+          '--draw-delay': `${drawDelay}ms`,
+        } as CSSProperties
+      }
+    />
+  )
+})
 
 /** The relation being drawn sits above the cards, so it can be seen over its target. */
 export function LinkPreviewLayer() {

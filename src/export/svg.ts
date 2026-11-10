@@ -1,5 +1,6 @@
 import type { SchemaModel } from '@/dbml/model'
 import { getOwn } from '@/lib/record'
+import { bundleEdges, bundleWidth, JUNCTION_GROWTH } from '@/layout/bundles'
 import { computeEdges } from '@/layout/edges'
 import type { StoredRoute } from '@/layout/elk'
 import { GEOMETRY, NOTE, tableTitle, type TableBox } from '@/layout/geometry'
@@ -73,7 +74,7 @@ const MONO = "'Geist Mono Variable', 'Geist Mono', ui-monospace, Menlo, monospac
 /** Standalone SVG of the diagram, drawn from the same geometry the canvas uses. */
 export function renderSvg(input: SvgExportInput): SvgExport {
   const { model, boxes, positions, routes, palette } = input
-  const edges = computeEdges(model, boxes, positions, routes)
+  const { edges, pieces, junctions } = bundleEdges(computeEdges(model, boxes, positions, routes))
   // Lines can leave the cards' bounding box: a relation of a table to itself loops out to
   // the side, and routes around cards may pass outside the outermost ones. The page has
   // to take them in, or they are cut off at the edge of the image.
@@ -122,14 +123,21 @@ export function renderSvg(input: SvgExportInput): SvgExport {
     )
   }
 
-  const kindOf = new Map(model.refs.map((ref) => [ref.id, ref.kind]))
   parts.push(
     `<g fill="none" stroke="${palette.edge}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">`,
   )
+  // Bundles first and heavier, so the single lines run on in them; dots mark the branches.
+  for (const piece of pieces) {
+    parts.push(`<path d="${piece.path}" stroke-width="${bundleWidth(piece.refIds.length)}"/>`)
+  }
   for (const edge of edges) {
-    const dash = kindOf.get(edge.refId) === 'enum' ? ' stroke-dasharray="3 4"' : ''
+    const dash = edge.kind === 'enum' ? ' stroke-dasharray="3 4"' : ''
     parts.push(`<path d="${edge.path}"${dash}/>`)
     if (edge.markers) parts.push(`<path d="${edge.markers}"/>`)
+  }
+  for (const { point, refIds } of junctions) {
+    const width = bundleWidth(refIds.length) + JUNCTION_GROWTH
+    parts.push(`<path d="M${point.x} ${point.y}h0" stroke-width="${width}"/>`)
   }
   parts.push('</g>')
 

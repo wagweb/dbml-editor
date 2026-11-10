@@ -704,13 +704,15 @@
  * the way the start screen draws its one relation. The dash offset is repainted, not
  * composited, so no line gets a GPU layer; markers appear once their line arrives.
  */
-.canvas-world[data-drawing='true'] .edge:not([data-kind='enum']) .edge-line {
+.canvas-world[data-drawing='true'] .edge:not([data-kind='enum']) .edge-line,
+.canvas-world[data-drawing='true'] .bundle-line {
   stroke-dasharray: 1 1;
   animation: line-draw 560ms var(--ease-out) both;
   animation-delay: calc(var(--draw-from, 0ms) + var(--draw-delay, 0ms));
 }
 
 .canvas-world[data-drawing='true'] .edge-marker,
+.canvas-world[data-drawing='true'] .bundle-junction,
 .canvas-world[data-drawing='true'] .edge[data-kind='enum'] .edge-line {
   animation: marker-arrive 560ms linear both;
   animation-delay: calc(var(--draw-from, 0ms) + var(--draw-delay, 0ms));
@@ -795,6 +797,62 @@
 /* A column's link to its enum type is not a foreign key: thin and dashed. */
 .edge[data-kind='enum'] .edge-line {
   stroke-dasharray: 3 4;
+}
+
+/*
+ * Bundles (layout/bundles.ts). A stretch several relations share lies under their single
+ * lines, heavier the more of them run in it, so it thins out branch by branch. A dot marks
+ * each branch, as on a wiring diagram, so it never reads as a crossing. The bundle turns
+ * accent only when all of its relations are lit; otherwise the lit one runs through it.
+ */
+.bundle-line,
+.bundle-junction {
+  fill: none;
+  stroke: var(--edge);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+  transition:
+    stroke 100ms ease-out,
+    stroke-opacity 160ms ease-out;
+  vector-effect: non-scaling-stroke;
+}
+
+.bundle-line {
+  stroke-width: var(--bundle-width);
+}
+
+.bundle-line[data-lit='all'] {
+  stroke: var(--accent);
+  stroke-width: calc(var(--bundle-width) + 0.5px);
+}
+
+/* A zero-length stroke with round caps: a dot that keeps its size at every zoom level. */
+.bundle-junction {
+  stroke-width: var(--junction-size);
+}
+
+.bundle-junction[data-active='true'] {
+  stroke: var(--accent);
+}
+
+.bundle-line[data-dimmed='true'],
+.bundle-junction[data-dimmed='true'] {
+  stroke-opacity: 0.22;
+}
+
+.bundle-hit {
+  pointer-events: stroke;
+}
+
+.canvas-world[data-linking='true'] .bundle-line,
+.canvas-world[data-linking='true'] .bundle-junction {
+  stroke: var(--edge);
+  stroke-opacity: 1;
+}
+
+.canvas-world[data-linking='true'] .bundle-hit {
+  pointer-events: none;
 }
 
 /* The relation being dragged out of a column, drawn above the cards. */

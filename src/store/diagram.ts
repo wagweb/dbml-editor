@@ -4,6 +4,7 @@ import { shortestPath, withinSteps } from '@/dbml/graph'
 import { schemaHints, type Hint } from '@/dbml/hints'
 import { EMPTY_MODEL, type RefModel, type SchemaModel } from '@/dbml/model'
 import { parseDbml, type Diagnostic } from '@/dbml/parse'
+import type { BundleRoot } from '@/layout/bundles'
 import { refreshRoutes } from '@/layout/edges'
 import { runLayout, type LayoutResult, type StoredRoute } from '@/layout/elk'
 import { getLayoutEngine } from '@/layout/engine'
@@ -42,6 +43,8 @@ export type Hover =
   | { kind: 'table'; tableId: string }
   | { kind: 'column'; tableId: string; column: string }
   | { kind: 'ref'; refId: string }
+  /** A stretch several relations share; see `layout/bundles.ts`. */
+  | { kind: 'bundle'; key: string; refIds: readonly string[]; root: BundleRoot }
 
 export interface Emphasis {
   /** Relations drawn in the accent colour. */
@@ -294,11 +297,13 @@ function computeEmphasis(
   // With a table selected, the selection decides what is lit. Hovering other tables on
   // the way to the next click must not light their relations into the greyed-out rest;
   // only a single hovered line still shows, for its tooltip.
-  const hoverCounts = hover !== null && (selectedTableId === null || hover.kind === 'ref')
+  const hoverCounts =
+    hover !== null && (selectedTableId === null || hover.kind === 'ref' || hover.kind === 'bundle')
   if (hover && hoverCounts) {
     for (const ref of model.refs) {
       let hovered = false
       if (hover.kind === 'ref') hovered = hover.refId === ref.id
+      else if (hover.kind === 'bundle') hovered = hover.refIds.includes(ref.id)
       else if (hover.kind === 'table') hovered = touches(ref, hover.tableId)
       else {
         hovered = [ref.child, ref.parent].some(
@@ -1151,6 +1156,7 @@ function sameHover(a: Hover | null, b: Hover | null): boolean {
   if (a === b) return true
   if (!a || !b || a.kind !== b.kind) return false
   if (a.kind === 'ref' && b.kind === 'ref') return a.refId === b.refId
+  if (a.kind === 'bundle' && b.kind === 'bundle') return a.key === b.key
   if (a.kind === 'table' && b.kind === 'table') return a.tableId === b.tableId
   if (a.kind === 'column' && b.kind === 'column') {
     return a.tableId === b.tableId && a.column === b.column
