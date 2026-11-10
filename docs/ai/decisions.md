@@ -307,3 +307,11 @@ with `(revised by #N)`.
     Two test timings came up on the way: CodeMirror accepts a completion only 75 ms after
     its list changed, and Radix moves menu focus a task after the key, so tests that press
     keys back to back now wait for each step.
+70. **2026-11-10: The code panel is a drawer.** Asked for by Niklas: opening and closing
+    the editor should animate. The panel's width runs between 0 and the chosen width and
+    the canvas resizes with it, so the diagram is pushed along, as it already was without
+    the motion, just no longer in one jump. Transforms (FLIP) would have kept the canvas
+    still on the main thread, but they promote the whole canvas to a GPU layer, which
+    decision 48 rules out, and would show an empty strip beside the narrower canvas
+    while it opens. The editor inside keeps its full width during the motion, so
+    CodeMirror measures and wraps once instead of on every frame.

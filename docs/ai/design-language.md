@@ -129,6 +129,12 @@ Rules:
   toasts through `usePresence` (`src/lib/usePresence.ts`), which keeps them for their exit.
 - Bars arrive from the edge they live on: the selection bar drops in from the top, the
   presentation bar, tips and toasts rise from the bottom, with the spring.
+- The code panel is a drawer (`.editor-pane`): showing or hiding the code runs its width
+  between 0 and the chosen width (320 ms open, 240 ms shut, `--ease-drawer`, which starts
+  softer than `--ease-out` because the whole diagram moves with the edge). The content
+  keeps its full width and slides in from the left, so the editor never re-wraps
+  mid-motion, and a closing panel is `inert` at once. Only the toggle moves it: the
+  splitter, a presentation and the phone's code/diagram switch change the width at once.
 - In the details panel a new table's name and content slide in by 4 px, tab content does
   the same, and an opened column grows to its height (grid rows from 0fr to 1fr).
 - The canvas has one motion of its own: when a diagram opens and after "Tidy up", the
@@ -249,7 +255,8 @@ Rules:
 `table-body`, `table-lod`, `column-row`, `column-name`, `relation-handle`,
 `relation-handle-dot`, `inline-edit`, `group-region`, `group-label`, `group-overview`,
 `edge-layer`, `edge`, `edge-hit`, `edge-line`, `edge-marker`, `edge-flow`, `edge-preview`,
-`edge-preview-end`, `edge-preview-label`, `link-preview-layer`, `start-screen`,
+`edge-preview-end`, `edge-preview-label`, `link-preview-layer`, `marquee`,
+`details-header`, `details-context`, `editor-pane`, `editor-pane-body`, `start-screen`,
 `start-calm`, `start-relation-line`, `start-relation-marker`.
 
 Check a new name against the Tailwind utility list before adding it.

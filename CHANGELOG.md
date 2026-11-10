@@ -82,6 +82,8 @@
   and after tidying up; column details open smoothly; buttons give when pressed; the
   theme cross-fades; copy buttons show a check.
 - Dialogs open with focus on the dialog, not on its close button.
+- The code panel slides open and shut like a drawer and the diagram moves along with its
+  edge; the code keeps its width on the way, so no line re-wraps.
 
 - The details panel has tabs (Columns, Relations, Indexes, Data). Columns are one line
   each and open for their details and actions; relations show how far the highlight
