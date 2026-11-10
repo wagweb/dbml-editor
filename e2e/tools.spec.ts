@@ -70,12 +70,16 @@ test.describe('tools', () => {
     await appendCode(page, '\n\n')
     await page.keyboard.type('Tabl')
     // The block template, not the bare keyword.
+    // Completion asks the language service, which takes longer when the machine is busy.
     await expect(
       page.locator('.cm-tooltip-autocomplete [aria-selected="true"]', { hasText: 'block' }),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 15_000 })
+    // CodeMirror takes a suggestion only 75 ms after its list last changed, so a key
+    // pressed right after typing is not taken as a choice by accident.
+    await page.waitForTimeout(150)
     await page.keyboard.press('Tab')
     await page.keyboard.type('audit_log')
-    await expect(table(page, 'audit_log')).toBeVisible()
+    await expect(table(page, 'audit_log')).toBeVisible({ timeout: 15_000 })
     await expect(table(page, 'audit_log')).toContainText('id')
   })
 

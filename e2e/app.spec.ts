@@ -327,7 +327,11 @@ test.describe('desktop', () => {
     await expect(item).toHaveAttribute('data-highlighted')
     expect(await shadow()).toBe('none')
 
+    // Radix moves focus a task after the key, so each step is awaited before the next.
     await page.keyboard.press('ArrowDown')
+    await expect(page.getByRole('menuitem', { name: /Open DBML file/ })).toHaveAttribute(
+      'data-highlighted',
+    )
     await page.keyboard.press('ArrowUp')
     await expect(item).toHaveAttribute('data-highlighted')
     // The highlight moves on the next frame; poll instead of reading once.
